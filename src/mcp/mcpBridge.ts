@@ -82,7 +82,7 @@ async function connectServer(name: string, config: McpServerConfig): Promise<Mcp
   }
 
   const client = new Client(
-    { name: "slave-agent", version: AGENT_VERSION },
+    { name: "memo-agent", version: AGENT_VERSION },
     { capabilities: {} }
   );
 
@@ -123,7 +123,7 @@ async function connectServer(name: string, config: McpServerConfig): Promise<Mcp
       }
     }
   } catch (err) {
-    process.stderr.write(`[slave-agent] Failed to list tools from MCP server "${name}": ${String(err)}\n`);
+    process.stderr.write(`[memo-agent] Failed to list tools from MCP server "${name}": ${String(err)}\n`);
   }
 
   return {

@@ -1,7 +1,7 @@
 /**
  * Tool interface and supporting types.
  *
- * Every tool in slave-agent implements this interface and self-registers
+ * Every tool in memo-agent implements this interface and self-registers
  * into the tool registry at module load time. No tool has knowledge of
  * other tools or the conversation engine — zero coupling.
  */

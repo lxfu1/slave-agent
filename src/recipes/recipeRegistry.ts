@@ -2,8 +2,8 @@
  * Recipe registry — loads and manages user-defined prompt templates.
  *
  * Recipes are .md files with YAML frontmatter stored in:
- *   Global:  ~/.slave-agent/recipes/
- *   Project: .slave-agent/recipes/   (takes precedence over global)
+ *   Global:  ~/.memo-agent/recipes/
+ *   Project: .memo-agent/recipes/   (takes precedence over global)
  *
  * A recipe is invoked with /<name> [args], which expands $ARGUMENTS
  * in the template body and injects the result into the conversation.
@@ -43,7 +43,7 @@ export interface RecipeExpansion {
 }
 
 const RECIPE_DIR = "recipes";
-const AGENT_HOME_DIR = ".slave-agent";
+const AGENT_HOME_DIR = ".memo-agent";
 
 /** Loads recipes from both global and project-local directories */
 export async function loadRecipes(cwd: string, profileDir: string): Promise<Recipe[]> {
@@ -86,7 +86,7 @@ async function loadRecipesFromDir(dir: string, scope: "global" | "project"): Pro
     if (result.status === "fulfilled") {
       if (result.value) recipes.push(result.value);
     } else {
-      process.stderr.write(`[slave-agent] Skipping recipe ${entries[i]}: ${String(result.reason)}\n`);
+      process.stderr.write(`[memo-agent] Skipping recipe ${entries[i]}: ${String(result.reason)}\n`);
     }
   }
   return recipes;
@@ -101,7 +101,7 @@ async function parseRecipeFile(
   // Parse YAML frontmatter between --- delimiters
   const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!fmMatch) {
-    console.warn(`[slave-agent] Recipe ${filePath} has no frontmatter — skipping`);
+    console.warn(`[memo-agent] Recipe ${filePath} has no frontmatter — skipping`);
     return null;
   }
 
@@ -172,7 +172,7 @@ export function expandRecipe(
 
   // Security: scan expanded body before injecting into conversation
   if (scanForInjection(bodyText)) {
-    console.warn(`[slave-agent] Potential injection in recipe "${recipe.name}" — blocking expansion`);
+    console.warn(`[memo-agent] Potential injection in recipe "${recipe.name}" — blocking expansion`);
     return null;
   }
 
@@ -183,7 +183,7 @@ export function expandRecipe(
   const allowedTools = rawAllowedTools.filter(name => {
     if (getTool(name)) return true;
     process.stderr.write(
-      `[slave-agent] Recipe "${recipe.name}": allowedTool "${name}" not found in registry — skipped\n`
+      `[memo-agent] Recipe "${recipe.name}": allowedTool "${name}" not found in registry — skipped\n`
     );
     return false;
   });

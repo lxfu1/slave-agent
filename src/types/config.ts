@@ -1,6 +1,6 @@
 /**
- * Configuration schema for slave-agent.
- * Loaded from ~/.slave-agent/config.yaml (or profile-specific path).
+ * Configuration schema for memo-agent.
+ * Loaded from ~/.memo-agent/config.yaml (or profile-specific path).
  * All string values support ${ENV_VAR} substitution.
  */
 

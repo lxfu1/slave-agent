@@ -97,8 +97,10 @@ const SENSITIVE_HOME_SUBDIRS = new Set([
  *   - The filesystem root /
  *   - Known Unix system trees (/etc, /usr, /bin, …) and their subtrees
  *   - Sensitive hidden subdirectories of home (~/.ssh, ~/.aws, …)
+ *
+ * @internal Exported for unit testing.
  */
-function isCoreDirectory(cwd: string): boolean {
+export function isCoreDirectory(cwd: string): boolean {
   const home = os.homedir();
   const resolved = path.resolve(cwd);
 

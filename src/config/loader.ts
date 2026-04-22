@@ -11,7 +11,7 @@ import yaml from "js-yaml";
 import { DEFAULT_CONFIG, type SlaveAgentConfig } from "../types/config.js";
 import { makeError, type SlaveAgentError } from "../types/errors.js";
 
-const AGENT_HOME_DIR = ".slave-agent";
+const AGENT_HOME_DIR = ".memo-agent";
 const CONFIG_FILE = "config.yaml";
 
 /** Returns the root directory for the given profile (or the default profile) */
@@ -119,8 +119,10 @@ function validateConfig(config: SlaveAgentConfig, source: string): void {
  * Array elements and non-string values are passed through unchanged.
  * User-defined keys (e.g. MCP server names, env var names) that are not
  * snake_case are left intact because the regex only matches _[a-z].
+ *
+ * @internal Exported for unit testing.
  */
-function convertKeysToCamelCase(value: unknown): unknown {
+export function convertKeysToCamelCase(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(convertKeysToCamelCase);
   if (typeof value === "object" && value !== null) {
     const result: Record<string, unknown> = {};

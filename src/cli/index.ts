@@ -90,10 +90,10 @@ const _require = createRequire(import.meta.url);
 const VERSION: string = (_require("../../package.json") as { version: string }).version;
 
 const HELP = `
-slave-agent v${VERSION} — terminal AI assistant with persistent memory
+memo-agent v${VERSION} — terminal AI assistant with persistent memory
 
 USAGE
-  slave [options]
+  memo [options]
 
 OPTIONS
   --profile <name>        Use a named profile (default: "default")
@@ -115,8 +115,8 @@ COMMANDS (inside the agent)
   /<recipe-name> [args]   Run a recipe
 
 CONFIG
-  ~/.slave-agent/config.yaml   Global configuration
-  .slave-agent/config.yaml     Project-level overrides
+  ~/.memo-agent/config.yaml   Global configuration
+  .memo-agent/config.yaml     Project-level overrides
   .env                         Environment variable overrides
 `.trim();
 
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   const cliArgs = parseArgs(process.argv);
 
   if (cliArgs.showVersion) {
-    console.log(`slave-agent v${VERSION}`);
+    console.log(`memo-agent v${VERSION}`);
     process.exit(0);
   }
 
@@ -145,8 +145,8 @@ async function main(): Promise<void> {
     config = await loadConfig(profileDir);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`\n[slave-agent] Configuration error:\n\n  ${message}\n`);
-    console.error(`Create ~/.slave-agent/config.yaml or set MODEL_API_KEY env var.\n`);
+    console.error(`\n[memo-agent] Configuration error:\n\n  ${message}\n`);
+    console.error(`Create ~/.memo-agent/config.yaml or set MODEL_API_KEY env var.\n`);
     process.exit(1);
   }
 
@@ -170,15 +170,15 @@ async function main(): Promise<void> {
       const connected = entries.filter(e => e.status.type === "connected");
       const failed = entries.filter(e => e.status.type === "failed");
       if (connected.length > 0) {
-        process.stderr.write(`[slave-agent] MCP: ${connected.length} server(s) connected\n`);
+        process.stderr.write(`[memo-agent] MCP: ${connected.length} server(s) connected\n`);
       }
       for (const e of failed) {
         const status = e.status as { type: "failed"; error: string };
-        process.stderr.write(`[slave-agent] MCP: "${e.name}" failed: ${status.error}\n`);
+        process.stderr.write(`[memo-agent] MCP: "${e.name}" failed: ${status.error}\n`);
       }
     })
     .catch(err => {
-      process.stderr.write(`[slave-agent] MCP bootstrap error: ${String(err)}\n`);
+      process.stderr.write(`[memo-agent] MCP bootstrap error: ${String(err)}\n`);
     });
 
   // Load recipes
@@ -196,9 +196,9 @@ async function main(): Promise<void> {
     const rows = loadMessagesForSession(db, cliArgs.resumeSessionId);
     if (rows.length > 0) {
       initialMessages = rowsToChatMessages(rows);
-      process.stderr.write(`[slave-agent] Restored session ${cliArgs.resumeSessionId.slice(0, 8)} (${rows.length} messages)\n`);
+      process.stderr.write(`[memo-agent] Restored session ${cliArgs.resumeSessionId.slice(0, 8)} (${rows.length} messages)\n`);
     } else {
-      process.stderr.write(`[slave-agent] Session ${cliArgs.resumeSessionId} not found — starting fresh\n`);
+      process.stderr.write(`[memo-agent] Session ${cliArgs.resumeSessionId} not found — starting fresh\n`);
     }
   }
 
@@ -240,6 +240,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error("[slave-agent] Fatal error:", err instanceof Error ? err.message : String(err));
+  console.error("[memo-agent] Fatal error:", err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

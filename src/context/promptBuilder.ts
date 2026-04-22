@@ -109,7 +109,7 @@ export async function buildSystemPrompt(opts: PromptBuilderOptions): Promise<Sys
 }
 
 function buildRoleBlock(): string {
-  return `You are Slave Agent, a terminal AI assistant for software development and knowledge work.
+  return `You are Memo Agent, a terminal AI assistant for software development and knowledge work.
 
 You have access to tools for reading/writing files, running shell commands, searching code, and managing notes.
 You maintain persistent memory across sessions via NOTES.md. You are direct, accurate, and concise.`;

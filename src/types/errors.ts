@@ -1,5 +1,5 @@
 /**
- * Typed error system. All errors in slave-agent are instances of SlaveAgentError
+ * Typed error system. All errors in memo-agent are instances of SlaveAgentError
  * with a discriminating code, enabling structured error handling without
  * string matching on error messages.
  */

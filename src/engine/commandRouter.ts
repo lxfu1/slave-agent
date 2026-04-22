@@ -49,7 +49,7 @@ Slave Agent — available commands:
   /profile [name]          Show or switch current profile
   /recipes                 List available recipes
   /mode [ask|auto]         Show or switch permission mode
-  /exit                    Exit slave-agent (alias: /quit)
+  /exit                    Exit memo-agent (alias: /quit)
 
   /<recipe-name> [args]    Invoke a recipe
 `.trim();
@@ -222,7 +222,7 @@ function handleRecipesCommand(ctx: CommandContext): CommandResult {
   if (ctx.recipes.length === 0) {
     return {
       type: "output",
-      message: "No recipes installed.\n\nAdd .md files to ~/.slave-agent/recipes/ or .slave-agent/recipes/",
+      message: "No recipes installed.\n\nAdd .md files to ~/.memo-agent/recipes/ or .memo-agent/recipes/",
       kind: "info",
     };
   }

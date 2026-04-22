@@ -1,4 +1,9 @@
-# slave-agent
+# memo-agent
+
+[![CI](https://github.com/yourusername/memo-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/memo-agent/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/memo-agent)](https://www.npmjs.com/package/memo-agent)
+[![Node.js](https://img.shields.io/node/v/memo-agent)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > [中文文档](README.zh-CN.md)
 

@@ -1,5 +1,5 @@
 /**
- * ConversationEngine — the core of slave-agent.
+ * ConversationEngine — the core of memo-agent.
  *
  * Owns the mutable conversation state and emits a typed stream of EngineEvents
  * via an async generator. The UI layer consumes these events to render output.

@@ -1,25 +1,60 @@
 {
-  "name": "slave-agent",
+  "name": "memo-agent",
   "version": "0.1.0",
-  "description": "A terminal AI agent with persistent memory and structured commands",
+  "description": "A terminal AI assistant with persistent memory, structured slash commands, and an extensible tool system",
   "type": "module",
+  "author": "Joel Alan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/memo-agent"
+  },
+  "homepage": "https://github.com/yourusername/memo-agent#readme",
+  "bugs": {
+    "url": "https://github.com/yourusername/memo-agent/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "terminal",
+    "cli",
+    "llm",
+    "mcp",
+    "memory",
+    "openai",
+    "tool-use",
+    "slash-commands"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
   "bin": {
-    "slave": "dist/cli/index.js"
+    "memo": "dist/cli/index.js"
   },
   "scripts": {
     "dev": "tsx src/cli/index.ts",
     "build": "tsc",
     "start": "node dist/cli/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",
     "better-sqlite3": "^9.6.0",
     "dotenv": "^16.4.5",
     "glob": "^11.0.0",
-    "minimatch": "^10.0.0",
     "ink": "^5.0.1",
     "js-yaml": "^4.1.0",
+    "minimatch": "^10.0.0",
     "openai": "^4.77.0",
     "react": "^18.3.1"
   },
@@ -28,7 +63,11 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "eslint": "^9.39.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
   }
 }

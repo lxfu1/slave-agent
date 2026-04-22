@@ -71,7 +71,8 @@ function getStmts(db: Database.Database): PreparedStatements {
 // Schema
 // ---------------------------------------------------------------------------
 
-const SCHEMA_SQL = `
+/** @internal Exported for use in test helpers that need an in-memory database. */
+export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;

@@ -36,7 +36,7 @@ export function StatusBar({ model, mode, profile, usage, isStreaming }: StatusBa
     >
       <Box gap={1}>
         <Text color={isStreaming ? "cyan" : "gray"}>{statusIndicator}</Text>
-        <Text color="gray">slave-agent</Text>
+        <Text color="gray">memo-agent</Text>
         <Text color="gray">│</Text>
         <Text color="white">{model.length > 20 ? model.slice(0, 20) + "…" : model}</Text>
       </Box>
