@@ -61,7 +61,7 @@ npm run dev
 npm run build
 npm start
 
-# Global installation to use the `slave` command
+# Global installation to use the `memo` command
 npm install -g .
 slave
 ```
@@ -71,7 +71,7 @@ slave
 ## CLI Arguments
 
 ```
-slave [options]
+memo [options]
 
 OPTIONS
   --profile <name>        Use the specified profile (default: "default")
@@ -85,10 +85,10 @@ OPTIONS
 Examples:
 
 ```bash
-slave --profile work
-slave --model gpt-4o-mini
-slave --resume abc12345
-slave --auto
+memo --profile work
+memo --model gpt-4o-mini
+memo --resume abc12345
+memo --auto
 ```
 
 ---
@@ -415,8 +415,8 @@ Use independent configurations, memory, and sessions for different scenarios:
 Switch profiles:
 
 ```bash
-slave --profile work
-slave --profile research
+memo --profile work
+memo --profile research
 ```
 
 ---
@@ -434,7 +434,7 @@ slave --profile research
 /search "sqlite WAL mode"
 
 # Resume a historical session (first use /history to get the session ID)
-slave --resume abc12345
+memo --resume abc12345
 
 # Clear the current session (does not affect NOTES.md)
 /clear

@@ -39,7 +39,7 @@ export type StreamEvent =
   | { type: "tool_call_delta"; id: string; argumentsDelta: string }
   | { type: "tool_call_done"; id: string; name: string; arguments: string }
   | { type: "message_done"; stopReason: string; usage: TokenUsage }
-  | { type: "error"; error: import("./errors.js").SlaveAgentError };
+  | { type: "error"; error: import("./errors.js").MemoAgentError };
 
 /** Accumulated state after a complete model response */
 export interface StreamResult {

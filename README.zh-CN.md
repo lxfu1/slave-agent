@@ -55,7 +55,7 @@ npm run dev
 npm run build
 npm start
 
-# 全局安装后使用 slave 命令
+# 全局安装后使用 memo 命令
 npm install -g .
 slave
 ```
@@ -65,7 +65,7 @@ slave
 ## 命令行参数
 
 ```
-slave [options]
+memo [options]
 
 OPTIONS
   --profile <name>        使用指定 profile（默认: "default"）
@@ -79,10 +79,10 @@ OPTIONS
 示例：
 
 ```bash
-slave --profile work
-slave --model gpt-4o-mini
-slave --resume abc12345
-slave --auto
+memo --profile work
+memo --model gpt-4o-mini
+memo --resume abc12345
+memo --auto
 ```
 
 ---
@@ -409,8 +409,8 @@ mcp_servers:
 切换方式：
 
 ```bash
-slave --profile work
-slave --profile research
+memo --profile work
+memo --profile research
 ```
 
 ---
@@ -428,7 +428,7 @@ slave --profile research
 /search "sqlite WAL mode"
 
 # 恢复历史会话（先用 /history 获取 session ID）
-slave --resume abc12345
+memo --resume abc12345
 
 # 清空当前会话（不影响 NOTES.md）
 /clear

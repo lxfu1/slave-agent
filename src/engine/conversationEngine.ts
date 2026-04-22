@@ -42,7 +42,7 @@ import { routeCommand, type CommandContext } from "./commandRouter.js";
 import { expandRecipe } from "../recipes/recipeRegistry.js";
 import { clearSessionTasks } from "../tools/tasks.js";
 import type { ChatMessage, OpenAIToolCall, TokenUsage } from "../types/messages.js";
-import type { SlaveAgentConfig } from "../types/config.js";
+import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
 import type { ToolContext } from "../types/tool.js";
 
@@ -91,7 +91,7 @@ export type PermissionDecision = "allow_once" | "allow_always" | "deny";
 // ---------------------------------------------------------------------------
 
 export interface EngineOptions {
-  config: SlaveAgentConfig;
+  config: MemoAgentConfig;
   profileDir: string;
   cwd: string;
   db: Database.Database;
@@ -805,7 +805,7 @@ export class ConversationEngine {
       case "switch_profile":
         yield {
           type: "command_output",
-          message: `To switch profile, restart with: slave --profile ${result.name}`,
+          message: `To switch profile, restart with: memo --profile ${result.name}`,
           kind: "info",
         };
         break;

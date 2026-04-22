@@ -8,8 +8,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
-import { DEFAULT_CONFIG, type SlaveAgentConfig } from "../types/config.js";
-import { makeError, type SlaveAgentError } from "../types/errors.js";
+import { DEFAULT_CONFIG, type MemoAgentConfig } from "../types/config.js";
+import { makeError, type MemoAgentError } from "../types/errors.js";
 
 const AGENT_HOME_DIR = ".memo-agent";
 const CONFIG_FILE = "config.yaml";
@@ -33,9 +33,9 @@ export async function ensureProfileDirs(profileDir: string): Promise<void> {
 /**
  * Loads and parses config.yaml from the given profile directory.
  * Falls back to DEFAULT_CONFIG when the file is absent.
- * Throws SlaveAgentError on parse errors or missing required fields.
+ * Throws MemoAgentError on parse errors or missing required fields.
  */
-export async function loadConfig(profileDir: string): Promise<SlaveAgentConfig> {
+export async function loadConfig(profileDir: string): Promise<MemoAgentConfig> {
   const configPath = path.join(profileDir, CONFIG_FILE);
 
   let raw: string;
@@ -62,16 +62,16 @@ export async function loadConfig(profileDir: string): Promise<SlaveAgentConfig> 
 
   // YAML conventionally uses snake_case; the TypeScript config uses camelCase.
   // Convert all object keys recursively so both styles work in config.yaml.
-  const normalized = convertKeysToCamelCase(parsed) as Partial<SlaveAgentConfig>;
+  const normalized = convertKeysToCamelCase(parsed) as Partial<MemoAgentConfig>;
   const merged = deepMerge(DEFAULT_CONFIG, normalized);
-  const substituted = substituteEnvVars(merged) as SlaveAgentConfig;
+  const substituted = substituteEnvVars(merged) as MemoAgentConfig;
 
   validateConfig(substituted, configPath);
   return substituted;
 }
 
 /** Builds a config purely from environment variables (no YAML file) */
-function buildConfigFromEnv(base: SlaveAgentConfig): SlaveAgentConfig {
+function buildConfigFromEnv(base: MemoAgentConfig): MemoAgentConfig {
   const config = structuredClone(base);
 
   if (process.env["MODEL_BASE_URL"]) config.model.baseUrl = process.env["MODEL_BASE_URL"];
@@ -99,7 +99,7 @@ function buildConfigFromEnv(base: SlaveAgentConfig): SlaveAgentConfig {
   return config;
 }
 
-function validateConfig(config: SlaveAgentConfig, source: string): void {
+function validateConfig(config: MemoAgentConfig, source: string): void {
   const errors: string[] = [];
 
   if (!config.model.baseUrl) errors.push("model.baseUrl is required");
@@ -181,11 +181,11 @@ function deepMerge<T extends object>(target: T, source: Partial<T>): T {
 /** Saves the current config to config.yaml in the profile directory */
 export async function saveConfig(
   profileDir: string,
-  config: SlaveAgentConfig
+  config: MemoAgentConfig
 ): Promise<void> {
   const configPath = path.join(profileDir, CONFIG_FILE);
   await fs.writeFile(configPath, yaml.dump(config), "utf-8");
 }
 
 /** Thrown when validation fails — re-exported for convenience */
-export type { SlaveAgentError };
+export type { MemoAgentError };

@@ -1,10 +1,10 @@
 /**
- * Typed error system. All errors in memo-agent are instances of SlaveAgentError
+ * Typed error system. All errors in memo-agent are instances of MemoAgentError
  * with a discriminating code, enabling structured error handling without
  * string matching on error messages.
  */
 
-export type SlaveAgentErrorCode =
+export type MemoAgentErrorCode =
   | "CONFIG_MISSING"
   | "CONFIG_PARSE_ERROR"
   | "API_ERROR"
@@ -21,26 +21,26 @@ export type SlaveAgentErrorCode =
   | "SESSION_NOT_FOUND"
   | "INJECTION_DETECTED";
 
-export interface SlaveAgentError {
-  readonly code: SlaveAgentErrorCode;
+export interface MemoAgentError {
+  readonly code: MemoAgentErrorCode;
   readonly message: string;
   readonly cause?: unknown;
 }
 
 export function makeError(
-  code: SlaveAgentErrorCode,
+  code: MemoAgentErrorCode,
   message: string,
   cause?: unknown
-): SlaveAgentError {
+): MemoAgentError {
   return { code, message, cause };
 }
 
-export function isSlaveAgentError(err: unknown): err is SlaveAgentError {
+export function isMemoAgentError(err: unknown): err is MemoAgentError {
   return (
     typeof err === "object" &&
     err !== null &&
     "code" in err &&
     "message" in err &&
-    typeof (err as SlaveAgentError).code === "string"
+    typeof (err as MemoAgentError).code === "string"
   );
 }

@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 import os from "node:os";
 import { createNotesManager } from "../memory/notesManager.js";
 import { readProfile } from "../memory/profileReader.js";
-import type { SlaveAgentConfig } from "../types/config.js";
+import type { MemoAgentConfig } from "../types/config.js";
 import { estimateStringTokens } from "./tokenBudget.js";
 
 const execFileAsync = promisify(execFile);
@@ -28,7 +28,7 @@ export interface RecipeDescriptor {
 export interface PromptBuilderOptions {
   cwd: string;
   profileDir: string;
-  config: SlaveAgentConfig;
+  config: MemoAgentConfig;
   recipes: RecipeDescriptor[];
 }
 

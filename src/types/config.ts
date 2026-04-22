@@ -53,7 +53,7 @@ export interface McpServerConfig {
   headers?: Record<string, string>;
 }
 
-export interface SlaveAgentConfig {
+export interface MemoAgentConfig {
   model: ModelConfig;
   auxiliary?: AuxiliaryModelConfig;
   memory: MemoryConfig;
@@ -62,7 +62,7 @@ export interface SlaveAgentConfig {
   mcpServers: Record<string, McpServerConfig>;
 }
 
-export const DEFAULT_CONFIG: SlaveAgentConfig = {
+export const DEFAULT_CONFIG: MemoAgentConfig = {
   model: {
     provider: "openai",
     baseUrl: "https://api.openai.com/v1",

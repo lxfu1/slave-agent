@@ -40,7 +40,7 @@ import {
   type MessageEntryData,
 } from "./MessageList.js";
 import { StatusBar } from "./StatusBar.js";
-import type { SlaveAgentConfig } from "../types/config.js";
+import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
 import type { PermissionRequest } from "../permissions/guard.js";
 import { getContextWindowSize } from "../context/tokenBudget.js";
@@ -60,7 +60,7 @@ const MAX_HISTORY = 50;
 type AppState = "idle" | "streaming" | "tool_running" | "awaiting_permission";
 
 export interface AppProps {
-  config: SlaveAgentConfig;
+  config: MemoAgentConfig;
   profileDir: string;
   cwd: string;
   db: Database.Database;
@@ -192,12 +192,12 @@ export function App(props: AppProps): React.ReactElement {
 
   // ── Buffer display tick: drives streaming-text updates ────────────────────
   // Fires only while text is actively streaming (not during tool_running where
-  // the buffer is empty). 180 ms gives ~5-6 redraws/s — smooth but half the
-  // rate of the previous 100 ms spinner approach.
+  // the buffer is empty). 400 ms ≈ 2.5 redraws/s — still feels live but
+  // dramatically reduces the Ink clear+rewrite cycles that cause flickering.
   const [, setBufferTick] = useState(0);
   useEffect(() => {
     if (appState !== "streaming" || isWaiting) return;
-    const id = setInterval(() => setBufferTick(n => n + 1), 180);
+    const id = setInterval(() => setBufferTick(n => n + 1), 400);
     return () => clearInterval(id);
   }, [appState, isWaiting]);
 

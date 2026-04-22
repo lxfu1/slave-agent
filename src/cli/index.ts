@@ -218,6 +218,34 @@ async function main(): Promise<void> {
     void cleanup().finally(() => process.exit(0));
   });
 
+  // ── DEC 2026 Synchronized Output ─────────────────────────────────────────
+  // Ink renders each frame by moving the cursor up, clearing the region, then
+  // writing new content.  The gap between "clear" and "write" is the source of
+  // flickering.  Wrapping every write call with the Begin/End Synchronized
+  // Update escape sequences tells the terminal emulator to buffer the entire
+  // write and commit it in one display refresh, eliminating intermediate states.
+  //
+  // Supported by: iTerm2, WezTerm, kitty, Ghostty, Windows Terminal, tmux.
+  // Unsupported terminals (Terminal.app) silently ignore the escape sequences.
+  const SYNC_START = '\x1b[?2026h';
+  const SYNC_END   = '\x1b[?2026l';
+  const _origWrite = process.stdout.write.bind(process.stdout);
+
+  function syncWrite(chunk: string | Uint8Array, cb?: (err?: Error | null) => void): boolean;
+  function syncWrite(chunk: string | Uint8Array, encoding: BufferEncoding, cb?: (err?: Error | null) => void): boolean;
+  function syncWrite(
+    chunk: string | Uint8Array,
+    encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
+    cb?: (err?: Error | null) => void,
+  ): boolean {
+    // Only wrap string writes — Ink renders as strings, binary is pass-through.
+    const data = typeof chunk === 'string' ? SYNC_START + chunk + SYNC_END : chunk;
+    if (typeof encodingOrCb === 'function') return _origWrite(data, encodingOrCb);
+    return _origWrite(data, encodingOrCb, cb);
+  }
+
+  process.stdout.write = syncWrite as typeof process.stdout.write;
+
   // Render the terminal UI
   const { waitUntilExit } = render(
     React.createElement(App, {
