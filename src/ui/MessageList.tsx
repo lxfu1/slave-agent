@@ -103,6 +103,9 @@ function UserMessage({ content }: { content: string }): React.ReactElement {
       borderColor='gray'
       flexDirection='column'
     >
+      <Text color='white' dimColor>
+        user
+      </Text>
       <Text color='white'>{content}</Text>
     </Box>
   );
@@ -121,10 +124,11 @@ function AssistantMessage({
         assistant{isStreaming ? ' ●' : ''}
       </Text>
       {/* Streaming text shows raw — Markdown only renders on completed messages */}
-      {isStreaming
-        ? <Text color='white'>{content}</Text>
-        : <MarkdownRenderer content={content} />
-      }
+      {isStreaming ? (
+        <Text color='white'>{content}</Text>
+      ) : (
+        <MarkdownRenderer content={content} />
+      )}
     </Box>
   );
 }
@@ -133,15 +137,16 @@ function ToolCallCard({
   name,
   status,
   result,
-  description,
+  description
 }: {
   name: string;
   status: 'running' | 'done' | 'error';
   result?: string | undefined;
   description?: string | undefined;
 }): React.ReactElement {
-  const icon  = status === 'running' ? '⟳' : status === 'done' ? '✓' : '✗';
-  const color = status === 'running' ? 'yellow' : status === 'done' ? 'green' : 'red';
+  const icon = status === 'running' ? '⟳' : status === 'done' ? '✓' : '✗';
+  const color =
+    status === 'running' ? 'yellow' : status === 'done' ? 'green' : 'red';
 
   // Show result for errors (up to 500 chars) or very short success messages
   // (≤120 chars). For long successful results (e.g. file content) we rely on
@@ -152,21 +157,33 @@ function ToolCallCard({
     (status === 'error' || result.length <= 120);
 
   const displayResult = showResult
-    ? result.slice(0, status === 'error' ? 500 : 120) + (result.length > 500 ? '…' : '')
+    ? result.slice(0, status === 'error' ? 500 : 120) +
+      (result.length > 500 ? '…' : '')
     : undefined;
 
   return (
-    <Box marginY={0} paddingX={1} borderStyle='single' borderColor='gray' flexDirection='column'>
+    <Box
+      marginY={0}
+      paddingX={1}
+      borderStyle='single'
+      borderColor='gray'
+      flexDirection='column'
+    >
       <Box gap={1}>
         <Text color={color}>{icon}</Text>
         <Text color='gray'>{name}</Text>
         {/* Description shows which file / command / pattern is being processed */}
         {description !== undefined && description !== '' && (
-          <Text color='gray' dimColor>{description}</Text>
+          <Text color='gray' dimColor>
+            {description}
+          </Text>
         )}
       </Box>
       {displayResult && (
-        <Text color={status === 'error' ? 'red' : 'gray'} dimColor={status !== 'error'}>
+        <Text
+          color={status === 'error' ? 'red' : 'gray'}
+          dimColor={status !== 'error'}
+        >
           {displayResult}
         </Text>
       )}
@@ -206,4 +223,3 @@ function Separator({ label }: { label: string }): React.ReactElement {
     </Box>
   );
 }
-
