@@ -5,6 +5,7 @@
  */
 
 import fs from "node:fs/promises";
+import { watch as fsWatch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
@@ -185,6 +186,41 @@ export async function saveConfig(
 ): Promise<void> {
   const configPath = path.join(profileDir, CONFIG_FILE);
   await fs.writeFile(configPath, yaml.dump(config), "utf-8");
+}
+
+/**
+ * Watches config.yaml for changes and calls onChange with the reloaded config.
+ * Debounces rapid writes (e.g. editor save) by 500 ms.
+ * Returns a cleanup function that stops watching.
+ * Safe to call even when config.yaml does not yet exist — silently no-ops.
+ */
+export function watchConfig(
+  profileDir: string,
+  onChange: (config: MemoAgentConfig) => void,
+  onError?: (err: Error) => void,
+): () => void {
+  const configPath = path.join(profileDir, CONFIG_FILE);
+  let debounce: ReturnType<typeof setTimeout> | null = null;
+
+  let watcher: ReturnType<typeof fsWatch> | null = null;
+  try {
+    watcher = fsWatch(configPath, { persistent: false }, (eventType) => {
+      if (eventType !== "change" && eventType !== "rename") return;
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        void loadConfig(profileDir)
+          .then(onChange)
+          .catch(err => onError?.(err instanceof Error ? err : new Error(String(err))));
+      }, 500);
+    });
+  } catch {
+    // File does not exist yet — watch not started, that's fine
+  }
+
+  return () => {
+    if (debounce) clearTimeout(debounce);
+    try { watcher?.close(); } catch { /* ignore */ }
+  };
 }
 
 /** Thrown when validation fails — re-exported for convenience */

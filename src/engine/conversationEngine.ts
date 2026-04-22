@@ -155,6 +155,13 @@ export class ConversationEngine {
     }
   }
 
+  /** Updates the active config (e.g. after a hot-reload) and invalidates the system prompt cache */
+  updateConfig(newConfig: MemoAgentConfig): void {
+    this.opts.config = newConfig;
+    this.currentModel = newConfig.model.name;
+    this.invalidateSystemPrompt();
+  }
+
   /** Interrupts the current streaming operation and resolves all pending permissions as denied */
   interrupt(): void {
     this.abortController?.abort();

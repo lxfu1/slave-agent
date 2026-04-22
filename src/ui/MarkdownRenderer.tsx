@@ -19,6 +19,7 @@ import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { marked } from 'marked';
 import type { Token, Tokens } from 'marked';
+import { HighlightedCodeBlock } from './CodeHighlighter.js';
 
 // ---------------------------------------------------------------------------
 // ANSI helpers — used only for inline formatting within paragraphs
@@ -109,21 +110,8 @@ function ParagraphBlock({ token }: { token: Tokens.Paragraph }): React.ReactElem
 }
 
 function CodeBlock({ token }: { token: Tokens.Code }): React.ReactElement {
-  // Extract the language tag (may have extra attributes after a space)
-  const lang = (token.lang ?? '').split(/\s/)[0] ?? '';
-  const lines = token.text.split('\n');
-
-  return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
-      {lang !== '' && (
-        <Text color="gray" dimColor>{lang}</Text>
-      )}
-      {lines.map((line, i) => (
-        // Empty lines must render as a single space so Ink assigns them height
-        <Text key={i} color="yellow">{line.length > 0 ? line : ' '}</Text>
-      ))}
-    </Box>
-  );
+  // Use syntax-highlighted version
+  return <HighlightedCodeBlock token={token} />;
 }
 
 /** Renders the content tokens inside a single list item. */
