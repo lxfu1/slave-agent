@@ -10,7 +10,8 @@
  * Input capabilities:
  *   ←/→ arrows       — cursor positioning within the current line
  *   ↑/↓ arrows       — navigate between lines (multi-line) or command history (single-line)
- *   Shift+Enter      — insert newline (start multi-line input)
+ *   Shift+Enter      — insert newline (requires Kitty Keyboard Protocol support;
+ *                      \+Enter works as a universal fallback)
  *   Enter            — submit input
  *   Esc              — cancel multi-line input (merge to single line)
  *   Streaming state  — characters accepted and queued, shown in gray;
@@ -94,6 +95,9 @@ export function App(props: AppProps): React.ReactElement {
   // ---------------------------------------------------------------------------
 
   const [appState, setAppState] = useState<AppState>("idle");
+  // Mirror of appState for use inside stable closures (e.g. raw stdin listener).
+  const appStateRef = useRef<AppState>("idle");
+  useEffect(() => { appStateRef.current = appState; }, [appState]);
 
   // All entries. Split by committedCount:
   //   entries[0..committedCount-1]  → rendered via <Static> (never re-render)
@@ -220,6 +224,46 @@ export function App(props: AppProps): React.ReactElement {
         addEntry({ kind: "notice", content: `Config reload failed: ${err.message}`, level: "error" });
       },
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Shift+Enter — passive Kitty Keyboard Protocol listener
+  //
+  // DO NOT send \x1b[>1u to enable the protocol. That forces the terminal into
+  // a mode that re-encodes Ctrl+C as \x1b[99;5u, breaking Ink's Ctrl+C handler.
+  //
+  // Instead, just listen passively: terminals that already implement the Kitty
+  // Keyboard Protocol (kitty, WezTerm, Zed, ghostty, foot …) send \x1b[13;2u
+  // for Shift+Enter by default.  Terminals that don't support it (macOS
+  // Terminal.app, older iTerm2 …) simply never emit that sequence — no harm
+  // done, and \+Enter still works as a universal fallback.
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    const handleRawData = (chunk: Buffer) => {
+      if (chunk.toString() !== "\x1b[13;2u") return; // not Shift+Enter
+      if (appStateRef.current !== "idle") return;
+
+      const currentLines = linesRef.current;
+      const lineIdx = currentLineIdxRef.current;
+      const pos = cursorPosRef.current;
+      const currentLine = currentLines[lineIdx] ?? "";
+
+      if (currentLines.length >= MAX_INPUT_LINES) return;
+      const before = currentLine.slice(0, pos);
+      const after = currentLine.slice(pos);
+      const newLines = [...currentLines];
+      newLines[lineIdx] = before;
+      newLines.splice(lineIdx + 1, 0, after);
+      setLines(newLines, lineIdx + 1, 0);
+      historyIdxRef.current = -1;
+    };
+
+    process.stdin.on("data", handleRawData);
+    return () => {
+      process.stdin.off("data", handleRawData);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -691,15 +735,15 @@ export function App(props: AppProps): React.ReactElement {
     if (key.return) {
       if (appState !== "idle") return; // ignore when streaming
 
-      if (key.shift) {
-        // Shift+Enter: insert newline (if under max lines)
+      // Backslash continuation: line ending with \ + Enter inserts a newline.
+      // (Shift+Enter cannot be reliably detected in terminals — the terminal
+      //  sends the same byte as plain Enter regardless of Shift state.)
+      if (currentLine.endsWith("\\")) {
         if (currentLines.length >= MAX_INPUT_LINES) return;
-
-        const before = currentLine.slice(0, pos);
-        const after = currentLine.slice(pos);
+        // Remove the trailing \ and move to a new empty line
         const newLines = [...currentLines];
-        newLines[lineIdx] = before;
-        newLines.splice(lineIdx + 1, 0, after);
+        newLines[lineIdx] = currentLine.slice(0, -1);
+        newLines.splice(lineIdx + 1, 0, "");
         setLines(newLines, lineIdx + 1, 0);
         if (historyIdxRef.current !== -1) historyIdxRef.current = -1;
       } else {
@@ -730,7 +774,11 @@ export function App(props: AppProps): React.ReactElement {
     }
 
     // ── Character input ──
-    if (char && !key.ctrl && !key.meta) {
+    // Guard against bare CSI sequences: Ink strips the leading \x1b from
+    // unrecognised escape sequences before passing them to this callback
+    // (e.g. Shift+Enter via Kitty protocol arrives as "[13;2u" here).
+    // The raw stdin listener in the Kitty effect already handled those.
+    if (char && !key.ctrl && !key.meta && !/^\[[\d;]*[A-Za-z~]$/.test(char)) {
       const charLen = char.length;
       const newLine = currentLine.slice(0, pos) + char + currentLine.slice(pos);
       const newLines = [...currentLines];

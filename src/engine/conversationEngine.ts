@@ -44,7 +44,7 @@ import { clearSessionTasks } from "../tools/tasks.js";
 import type { ChatMessage, OpenAIToolCall, TokenUsage } from "../types/messages.js";
 import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
-import type { ToolContext } from "../types/tool.js";
+import type { Tool, ToolContext } from "../types/tool.js";
 
 const MAX_TOOL_CALL_ROUNDS = 20;
 
@@ -419,11 +419,9 @@ export class ConversationEngine {
       yield { type: "messages_updated", messages: this.messages };
       yield this.buildUsageEvent(systemPrompt);
 
-      // Handle tool calls
+      // Handle tool calls — read-only batches run in parallel, others serially.
       if (stopReason === "tool_calls" && accumulatedToolCalls.length > 0) {
-        for (const toolCall of accumulatedToolCalls) {
-          yield* this.executeToolCall(toolCall);
-        }
+        yield* this.executeToolCalls(accumulatedToolCalls);
         continue; // Continue loop to send tool results back to model
       }
 
@@ -472,7 +470,152 @@ export class ConversationEngine {
   }
 
   // ---------------------------------------------------------------------------
-  // Tool execution
+  // Tool execution — dispatcher
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Executes a batch of tool calls, choosing the optimal strategy:
+   *
+   * • All tools read-only  →  parallel (Promise.allSettled)
+   *   Read-only tools have no filesystem side-effects, always receive
+   *   auto-approved permissions, and are independent of each other.
+   *   Running them concurrently removes the serial IO wait time entirely.
+   *
+   * • Any write tool present  →  serial (original behaviour)
+   *   Write tools may: require user confirmation dialogs, invalidate the
+   *   system-prompt cache, trigger watchPaths suggestions, or depend on
+   *   the output of a previous tool in the same batch.
+   *
+   * Message ordering is always preserved: results are appended to
+   * this.messages in the original toolCall index order regardless of which
+   * tool finished first.
+   */
+  private async *executeToolCalls(
+    toolCalls: OpenAIToolCall[],
+  ): AsyncGenerator<EngineEvent, void, unknown> {
+    // ── Decide strategy ──────────────────────────────────────────────────────
+    const canParallelize =
+      toolCalls.length > 1 &&
+      toolCalls.every(tc => getTool(tc.function.name)?.isReadOnly() === true);
+
+    if (!canParallelize) {
+      for (const toolCall of toolCalls) {
+        yield* this.executeToolCall(toolCall);
+      }
+      return;
+    }
+
+    // ── Parallel path ────────────────────────────────────────────────────────
+
+    // Discriminated union for per-call preparation result
+    type PreparedOk = {
+      ok: true;
+      toolCall: OpenAIToolCall;
+      tool: Tool;
+      input: Record<string, unknown>;
+    };
+    type PreparedErr = {
+      ok: false;
+      toolCall: OpenAIToolCall;
+      error: string;
+    };
+    type Prepared = PreparedOk | PreparedErr;
+
+    // Step 1 — parse inputs and check permissions synchronously.
+    // Read-only tools always receive "allow" (unless explicitly denied),
+    // so no async user interaction is needed here.
+    const prepared: Prepared[] = toolCalls.map((toolCall): Prepared => {
+      const tool = getTool(toolCall.function.name);
+      if (!tool) {
+        return { ok: false, toolCall, error: `Tool "${toolCall.function.name}" not found` };
+      }
+
+      let input: Record<string, unknown>;
+      try {
+        input = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
+      } catch {
+        return { ok: false, toolCall, error: `Invalid JSON arguments for tool "${toolCall.function.name}"` };
+      }
+
+      const isPreApproved =
+        this.recipeAllowedTools.has(toolCall.function.name) ||
+        this.sessionAlwaysAllowedTools.has(toolCall.function.name);
+      const effectiveMode = isPreApproved ? "auto" : this.permissionMode;
+      const permResult = checkPermission(tool, input, effectiveMode, this.opts.config.permissions, this.opts.cwd);
+
+      if (permResult.behavior === "deny") {
+        return { ok: false, toolCall, error: `Permission denied: ${permResult.reason}` };
+      }
+      // "ask" should never occur for read-only tools, but guard defensively.
+      if (permResult.behavior === "ask") {
+        return { ok: false, toolCall, error: `Unexpected permission prompt for read-only tool "${toolCall.function.name}"` };
+      }
+
+      return { ok: true, toolCall, tool, input };
+    });
+
+    // Step 2 — emit description events for all tools up-front so the UI
+    // shows every card in "running" state before any of them finish.
+    for (const p of prepared) {
+      if (p.ok) {
+        yield {
+          type: "tool_call_description",
+          id: p.toolCall.id,
+          description: buildToolDescription(p.toolCall.function.name, p.input),
+        };
+      }
+    }
+
+    // Step 3 — execute all prepared tools concurrently.
+    const toolCtx: ToolContext = {
+      cwd: this.opts.cwd,
+      profileDir: this.opts.profileDir,
+      sessionId: this.sessionId,
+      permissionMode: this.permissionMode,
+      db: this.opts.db,
+      ...(this.abortController && { abortSignal: this.abortController.signal }),
+    };
+
+    const execResults = await Promise.allSettled(
+      prepared.map(p =>
+        p.ok
+          ? p.tool.call(p.input, toolCtx)
+          : Promise.resolve({ content: p.error, isError: true as const }),
+      ),
+    );
+
+    // Step 4 — emit results in the original call order and update messages.
+    // Preserving order is required so this.messages stays consistent with
+    // the assistant's tool_calls array (matched by tool_call_id).
+    for (let i = 0; i < prepared.length; i++) {
+      const p = prepared[i]!;
+      const execResult = execResults[i]!;
+      const toolName = p.toolCall.function.name;
+      const toolId = p.toolCall.id;
+
+      let content: string;
+      let isError: boolean;
+
+      if (execResult.status === "rejected") {
+        content = `Tool execution error: ${execResult.reason instanceof Error ? execResult.reason.message : String(execResult.reason)}`;
+        isError = true;
+      } else {
+        const raw = execResult.value;
+        isError = raw.isError ?? false;
+        // Truncate oversized results (mirrors the sequential path).
+        const maxChars = p.ok ? p.tool.maxResultChars : raw.content.length;
+        content = raw.content.length > maxChars
+          ? raw.content.slice(0, maxChars) + "\n...(truncated)"
+          : raw.content;
+      }
+
+      this.appendToolResult(toolId, toolName, content, isError);
+      yield { type: "tool_result", name: toolName, id: toolId, content, isError };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tool execution — single call
   // ---------------------------------------------------------------------------
 
   private async *executeToolCall(
