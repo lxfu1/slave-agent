@@ -86,7 +86,6 @@ function parseArgs(argv: string[]): CliArgs {
 // ---------------------------------------------------------------------------
 
 const _require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 const VERSION: string = (_require("../../package.json") as { version: string }).version;
 
 const HELP = `

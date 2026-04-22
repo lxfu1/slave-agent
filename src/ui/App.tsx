@@ -55,6 +55,7 @@ import type { PermissionRequest } from "../permissions/guard.js";
 import { getContextWindowSize } from "../context/tokenBudget.js";
 import { watchConfig } from "../config/loader.js";
 import type { AppState } from "./types.js";
+import type { ChatMessage } from "../types/messages.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -75,7 +76,7 @@ export interface AppProps {
   modelClient: OpenAI;
   auxiliaryClient: OpenAI | null;
   recipes: Recipe[];
-  initialMessages?: import("../types/messages.js").ChatMessage[];
+  initialMessages?: ChatMessage[];
   permissionMode?: "ask" | "auto";
   profileName?: string;
 }

@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import type { ConversationEngine, PermissionDecision } from "../engine/conversationEngine.js";
 import type { PermissionRequest } from "../permissions/guard.js";
 import type { AppState } from "./types.js";
+import type { Key } from "ink";
 
 // ---------------------------------------------------------------------------
 // PermissionDialog
@@ -34,7 +35,7 @@ export function PermissionDialog({ request }: { request: PermissionRequest }): R
 
 export function handlePermissionInput(
   char: string,
-  key: import("ink").Key,
+  key: Key,
   request: PermissionRequest,
   engine: ConversationEngine,
   setPendingPermission: (r: PermissionRequest | null) => void,

@@ -8,7 +8,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import type { MessageRow, SearchResultRow, SessionRow } from "../types/session.js";
-import type { ChatMessage } from "../types/messages.js";
+import type { ChatMessage, OpenAIToolCall } from "../types/messages.js";
 
 const DB_FILE = "sessions.db";
 const MAX_SESSIONS = 50;
@@ -254,7 +254,7 @@ export function rowsToChatMessages(rows: MessageRow[]): ChatMessage[] {
     if (row.toolCallsJson) {
       // Cast to the concrete array type (not ChatMessage["tool_calls"] which
       // includes undefined and would violate exactOptionalPropertyTypes)
-      base.tool_calls = JSON.parse(row.toolCallsJson) as import("../types/messages.js").OpenAIToolCall[];
+      base.tool_calls = JSON.parse(row.toolCallsJson) as OpenAIToolCall[];
     }
     if (row.toolCallId) {
       base.tool_call_id = row.toolCallId;
