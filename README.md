@@ -1,15 +1,13 @@
 # memo-agent
 
-[![CI](https://github.com/yourusername/memo-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/memo-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/lxfu1/memo-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/lxfu1/memo-agent/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/memo-agent)](https://www.npmjs.com/package/memo-agent)
 [![Node.js](https://img.shields.io/node/v/memo-agent)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > [中文文档](README.zh-CN.md)
 
-A terminal AI assistant with memory (Hermes Agent simplified version) — an essential tool for every worker.
-
-Connects directly to OpenAI-compatible APIs, features cross-session persistent memory, structured slash commands, and an extensible tool system.
+memo-agent is a terminal-based AI assistant application (Hermes Agent simplified version), built with TypeScript + React + Ink. It connects directly to OpenAI-compatible APIs and features persistent memory, MCP tool extensions, and intelligent context compression.
 
 ---
 
@@ -51,7 +49,7 @@ MODEL_API_KEY=sk-...
 MODEL_NAME=gpt-4o
 ```
 
-Or create `~/.slave-agent/config.yaml` (see [Configuration File](#configuration-file)).
+Or create `~/.memo-agent/config.yaml` (see [Configuration File](#configuration-file)).
 
 ### Launch
 
@@ -114,7 +112,7 @@ slave --auto
 The bottom status bar displays in real time:
 
 ```
-● slave-agent │ gpt-4o    tokens: 1234/128k (15%)  │  $0.0042  │  mode:ask  │  profile:default
+● memo-agent │ gpt-4o    tokens: 1234/128k (15%)  │  $0.0042  │  mode:ask  │  profile:default
 ```
 
 | Field | Description |
@@ -145,7 +143,7 @@ Enter the following commands during a conversation:
 | `/profile [name]` | View or switch profile |
 | `/recipes` | List installed recipes |
 | `/mode [ask\|auto]` | Switch tool execution permission mode |
-| `/exit` | Exit slave-agent (alias: `/quit`) |
+| `/exit` | Exit memo-agent (alias: `/quit`) |
 
 ---
 
@@ -155,8 +153,8 @@ A recipe is a reusable prompt template stored as a `.md` file.
 
 ### Storage Locations
 
-- **Global**: `~/.slave-agent/recipes/`
-- **Project-level** (priority): `.slave-agent/recipes/`
+- **Global**: `~/.memo-agent/recipes/`
+- **Project-level** (priority): `.memo-agent/recipes/`
 
 ### Recipe File Format
 
@@ -193,7 +191,7 @@ $ARGUMENTS
 
 ### NOTES.md — Working Notes (Read/Write)
 
-Path: `~/.slave-agent/memory/NOTES.md` (or under the profile directory)
+Path: `~/.memo-agent/memory/NOTES.md` (or under the profile directory)
 
 - The agent can append notes via the `WriteNotes` tool
 - When `memory.auto_update: true` is enabled, it automatically evaluates whether information is worth retaining and writes it at the end of each round; saved content is displayed in the terminal upon writing
@@ -202,7 +200,7 @@ Path: `~/.slave-agent/memory/NOTES.md` (or under the profile directory)
 
 ### PROFILE.md — User Preferences (Read-Only)
 
-Path: `~/.slave-agent/memory/PROFILE.md`
+Path: `~/.memo-agent/memory/PROFILE.md`
 
 Only editable by the user; the agent will not modify it. Suitable for placing:
 
@@ -335,8 +333,8 @@ permissions:
 
 | Path | Purpose |
 |------|---------|
-| `~/.slave-agent/config.yaml` | Global default config |
-| `~/.slave-agent/profiles/<name>/config.yaml` | Config for a specific profile |
+| `~/.memo-agent/config.yaml` | Global default config |
+| `~/.memo-agent/profiles/<name>/config.yaml` | Config for a specific profile |
 | `.env` | Environment variables in the project root (highest priority) |
 
 ### Full Configuration Example
@@ -399,7 +397,7 @@ mcp_servers:
 Use independent configurations, memory, and sessions for different scenarios:
 
 ```
-~/.slave-agent/                  # default profile
+~/.memo-agent/                  # default profile
   config.yaml
   memory/
     NOTES.md
@@ -407,7 +405,7 @@ Use independent configurations, memory, and sessions for different scenarios:
   sessions.db
   recipes/
 
-~/.slave-agent/profiles/work/    # work profile
+~/.memo-agent/profiles/work/    # work profile
   config.yaml                    # Can use a different model, API key
   memory/
   sessions.db
@@ -452,7 +450,7 @@ The model can also proactively query history via tools:
 ## Directory Structure
 
 ```
-slave-agent/
+memo-agent/
 ├── src/
 │   ├── cli/
 │   │   └── index.ts              # Entry: argument parsing, startup flow
@@ -495,7 +493,7 @@ slave-agent/
 │       ├── errors.ts             # SlaveAgentError discriminated union
 │       ├── tool.ts               # Tool interface
 │       └── session.ts            # SessionRow, MessageRow
-├── .slave-agent/
+├── .memo-agent/
 │   └── recipes/                  # Project-level recipe files
 ├── .env.example
 ├── package.json

@@ -14,8 +14,9 @@
  *   every 50 ms so the display updates without thrashing React state.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Box, Text } from 'ink';
+import { MarkdownRenderer } from './MarkdownRenderer.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,7 +31,9 @@ export type MessageEntryData =
       name: string;
       toolId: string;
       status: 'running' | 'done' | 'error';
-      result?: string;
+      result?: string | undefined;
+      /** Human-readable summary of what the tool is doing, e.g. "src/main.ts" */
+      description?: string | undefined;
     }
   | {
       kind: 'notice';
@@ -94,7 +97,8 @@ export function MessageEntryItem({
         <ToolCallCard
           name={entry.name}
           status={entry.status as 'running' | 'done' | 'error'}
-          result={entry.result as string}
+          result={entry.result}
+          description={entry.description}
         />
       );
     case 'notice':
@@ -138,7 +142,11 @@ function AssistantMessage({
       <Text color='cyan' dimColor>
         assistant{isStreaming ? ' ●' : ''}
       </Text>
-      <Text color='white'>{content}</Text>
+      {/* Streaming text shows raw — Markdown only renders on completed messages */}
+      {isStreaming
+        ? <Text color='white'>{content}</Text>
+        : <MarkdownRenderer content={content} />
+      }
     </Box>
   );
 }
@@ -146,46 +154,41 @@ function AssistantMessage({
 function ToolCallCard({
   name,
   status,
-  result
+  result,
+  description,
 }: {
   name: string;
   status: 'running' | 'done' | 'error';
-  result?: string;
+  result?: string | undefined;
+  description?: string | undefined;
 }): React.ReactElement {
-  const icon = status === 'running' ? '⟳' : status === 'done' ? '✓' : '✗';
-  const color =
-    status === 'running' ? 'yellow' : status === 'done' ? 'green' : 'red';
+  const icon  = status === 'running' ? '⟳' : status === 'done' ? '✓' : '✗';
+  const color = status === 'running' ? 'yellow' : status === 'done' ? 'green' : 'red';
 
   // Show result for errors (up to 500 chars) or very short success messages
-  // (≤120 chars). For long successful results (e.g. ReadFile content) we
-  // only show the tool name — the model already has the data.
+  // (≤120 chars). For long successful results (e.g. file content) we rely on
+  // `description` to tell the user what happened, not the full result body.
   const showResult =
     result !== undefined &&
     status !== 'running' &&
     (status === 'error' || result.length <= 120);
 
   const displayResult = showResult
-    ? result!.slice(0, status === 'error' ? 500 : 120) +
-      (result!.length > 500 ? '…' : '')
+    ? result.slice(0, status === 'error' ? 500 : 120) + (result.length > 500 ? '…' : '')
     : undefined;
 
   return (
-    <Box
-      marginY={0}
-      paddingX={1}
-      borderStyle='single'
-      borderColor='gray'
-      flexDirection='column'
-    >
+    <Box marginY={0} paddingX={1} borderStyle='single' borderColor='gray' flexDirection='column'>
       <Box gap={1}>
         <Text color={color}>{icon}</Text>
         <Text color='gray'>{name}</Text>
+        {/* Description shows which file / command / pattern is being processed */}
+        {description !== undefined && description !== '' && (
+          <Text color='gray' dimColor>{description}</Text>
+        )}
       </Box>
       {displayResult && (
-        <Text
-          color={status === 'error' ? 'red' : 'gray'}
-          dimColor={status !== 'error'}
-        >
+        <Text color={status === 'error' ? 'red' : 'gray'} dimColor={status !== 'error'}>
           {displayResult}
         </Text>
       )}
@@ -227,7 +230,15 @@ function Separator({ label }: { label: string }): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
-// Hook: streaming buffer with 50 ms flush interval
+// Hook: streaming buffer — ref-based, no internal timer
+//
+// The 50 ms self-flush timer was the primary source of terminal flickering:
+// it fired independently of the 100 ms spinner tick, causing two separate
+// Ink re-draws per 100 ms window.  The buffer is now a plain ref; React
+// re-renders that are already triggered by the spinner tick (every 100 ms
+// while streaming) read the latest buffer value through the getter.
+// The first delta also triggers a re-render via setIsWaiting(false) in App,
+// so latency to first visible character is not affected.
 // ---------------------------------------------------------------------------
 
 interface UseStreamingBufferResult {
@@ -238,16 +249,6 @@ interface UseStreamingBufferResult {
 
 export function useStreamingBuffer(): UseStreamingBufferResult {
   const bufRef = useRef('');
-  const [, forceUpdate] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (bufRef.current) {
-        forceUpdate((n) => n + 1);
-      }
-    }, 50);
-    return () => clearInterval(interval);
-  }, []);
 
   return {
     get buffer() {
@@ -258,6 +259,6 @@ export function useStreamingBuffer(): UseStreamingBufferResult {
     },
     clear() {
       bufRef.current = '';
-    }
+    },
   };
 }

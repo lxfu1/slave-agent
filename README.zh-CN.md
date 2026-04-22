@@ -1,8 +1,7 @@
-# slave-agent
+# memo-agent
 
-有记忆的终端 AI 助手（Hermes Agent 简化版），打工人的标配。
-
-直连 OpenAI-compatible API，跨会话持久化记忆，结构化 slash 命令，可扩展工具体系。
+memo-agent 是一个基于终端的 AI 助手应用（Hermes Agent 简化版），采用 TypeScript + React + Ink 构建，直接连接 OpenAI 兼容
+ API，具备持久化记忆、MCP 工具扩展和智能上下文压缩等特性。
 
 ---
 
@@ -44,7 +43,7 @@ MODEL_API_KEY=sk-...
 MODEL_NAME=gpt-4o
 ```
 
-或者创建 `~/.slave-agent/config.yaml`（见 [配置文件](#配置文件)）。
+或者创建 `~/.memo-agent/config.yaml`（见 [配置文件](#配置文件)）。
 
 ### 启动
 
@@ -107,7 +106,7 @@ slave --auto
 底部状态栏实时显示：
 
 ```
-● slave-agent │ gpt-4o    tokens: 1234/128k (15%)  │  $0.0042  │  mode:ask  │  profile:default
+● memo-agent │ gpt-4o    tokens: 1234/128k (15%)  │  $0.0042  │  mode:ask  │  profile:default
 ```
 
 | 字段 | 说明 |
@@ -138,7 +137,7 @@ slave --auto
 | `/profile [名称]` | 查看或切换 profile |
 | `/recipes` | 列出已安装的 recipe |
 | `/mode [ask\|auto]` | 切换工具执行权限模式 |
-| `/exit` | 退出 slave-agent（别名：`/quit`） |
+| `/exit` | 退出 memo-agent（别名：`/quit`） |
 
 ---
 
@@ -148,8 +147,8 @@ Recipe 是可复用的 prompt 模板，存放为 `.md` 文件。
 
 ### 存放位置
 
-- **全局**：`~/.slave-agent/recipes/`
-- **项目级**（优先）：`.slave-agent/recipes/`
+- **全局**：`~/.memo-agent/recipes/`
+- **项目级**（优先）：`.memo-agent/recipes/`
 
 ### Recipe 文件格式
 
@@ -186,7 +185,7 @@ $ARGUMENTS
 
 ### NOTES.md — 工作笔记（可读写）
 
-路径：`~/.slave-agent/memory/NOTES.md`（或 profile 目录下）
+路径：`~/.memo-agent/memory/NOTES.md`（或 profile 目录下）
 
 - agent 可通过 `WriteNotes` 工具追加笔记
 - 启用 `memory.auto_update: true` 后，每轮对话结束自动判断是否有值得保留的信息并写入；写入时在终端展示保存的内容
@@ -195,7 +194,7 @@ $ARGUMENTS
 
 ### PROFILE.md — 用户偏好（只读）
 
-路径：`~/.slave-agent/memory/PROFILE.md`
+路径：`~/.memo-agent/memory/PROFILE.md`
 
 只有用户手动编辑，agent 不会修改。适合放置：
 
@@ -328,8 +327,8 @@ permissions:
 
 | 路径 | 作用 |
 |------|------|
-| `~/.slave-agent/config.yaml` | 全局默认配置 |
-| `~/.slave-agent/profiles/<name>/config.yaml` | 指定 profile 的配置 |
+| `~/.memo-agent/config.yaml` | 全局默认配置 |
+| `~/.memo-agent/profiles/<name>/config.yaml` | 指定 profile 的配置 |
 | `.env` | 项目根目录环境变量（最高优先级） |
 
 ### 完整配置示例
@@ -392,7 +391,7 @@ mcp_servers:
 不同场景使用独立的配置、记忆和会话：
 
 ```
-~/.slave-agent/                  # default profile
+~/.memo-agent/                  # default profile
   config.yaml
   memory/
     NOTES.md
@@ -400,7 +399,7 @@ mcp_servers:
   sessions.db
   recipes/
 
-~/.slave-agent/profiles/work/    # work profile
+~/.memo-agent/profiles/work/    # work profile
   config.yaml                    # 可使用不同模型、API key
   memory/
   sessions.db
@@ -445,7 +444,7 @@ model 也可通过工具主动查阅历史：
 ## 目录结构
 
 ```
-slave-agent/
+memo-agent/
 ├── src/
 │   ├── cli/
 │   │   └── index.ts              # 入口：参数解析、启动流程
@@ -488,7 +487,7 @@ slave-agent/
 │       ├── errors.ts             # SlaveAgentError 判别联合
 │       ├── tool.ts               # Tool 接口
 │       └── session.ts            # SessionRow、MessageRow
-├── .slave-agent/
+├── .memo-agent/
 │   └── recipes/                  # 项目级 recipe 文件
 ├── .env.example
 ├── package.json

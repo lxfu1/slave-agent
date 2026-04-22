@@ -55,6 +55,12 @@ const MAX_TOOL_CALL_ROUNDS = 20;
 export type EngineEvent =
   | { type: "stream_delta"; delta: string }
   | { type: "tool_call_start"; name: string; id: string }
+  /**
+   * Emitted right before a tool is called — after permission is granted but
+   * before execution starts.  Carries a human-readable description so the UI
+   * can show "⟳ ReadFile  src/main.ts" instead of just the bare tool name.
+   */
+  | { type: "tool_call_description"; id: string; description: string }
   | { type: "tool_result"; name: string; id: string; content: string; isError: boolean }
   | { type: "messages_updated"; messages: ChatMessage[] }
   | { type: "usage_updated"; sessionUsage: SessionUsage }
@@ -525,6 +531,10 @@ export class ConversationEngine {
       ...(this.abortController && { abortSignal: this.abortController.signal }),
     };
 
+    // Emit a description so the UI can show "⟳ ReadFile src/main.ts" while
+    // the tool is running, instead of just the bare tool name.
+    yield { type: "tool_call_description", id: toolCall.id, description: buildToolDescription(toolName, input) };
+
     let result;
     try {
       result = await tool.call(input, toolCtx);
@@ -973,4 +983,31 @@ Rules:
     const messages = rowsToChatMessages(rows);
     return new ConversationEngine({ ...opts, sessionId, initialMessages: messages });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Produces a one-line human-readable description of a tool invocation.
+ * Shown in the ToolCallCard while the tool is running so the user can see
+ * what the model is doing (e.g. "src/main.ts" rather than just "ReadFile").
+ */
+function buildToolDescription(toolName: string, input: Record<string, unknown>): string {
+  // Generic extraction: pick the most meaningful single-value field.
+  const path    = typeof input["path"]    === "string" ? input["path"]    : null;
+  const command = typeof input["command"] === "string" ? input["command"] : null;
+  const pattern = typeof input["pattern"] === "string" ? input["pattern"] : null;
+  const query   = typeof input["query"]   === "string" ? input["query"]   : null;
+  const content = typeof input["content"] === "string" ? input["content"] : null;
+
+  if (path)    return path;
+  if (command) return command.length > 60 ? command.slice(0, 59) + "…" : command;
+  if (pattern) return pattern.length > 60 ? pattern.slice(0, 59) + "…" : pattern;
+  if (query)   return query.length   > 60 ? query.slice(0, 59)   + "…" : query;
+  // WriteNotes / ReadNotes
+  if (toolName === "WriteNotes" && content) return content.slice(0, 60) + (content.length > 60 ? "…" : "");
+  if (toolName === "ReadNotes")  return "NOTES.md";
+  return "";
 }

@@ -54,6 +54,10 @@ export async function* streamChat(
         stream: true,
         // OpenAI API uses null (not undefined) to indicate "no limit"
         max_tokens: opts.maxTokens ?? null,
+        // Request usage statistics in the final streaming chunk so token
+        // counts are available without a separate non-streaming call.
+        // Ignored silently by APIs that don't support this option.
+        stream_options: { include_usage: true },
       },
       { ...(opts.abortSignal && { signal: opts.abortSignal }) }
     );

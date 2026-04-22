@@ -170,19 +170,36 @@ export function App(props: AppProps): React.ReactElement {
   // Timers
   // ---------------------------------------------------------------------------
 
+  // Cursor blinks only when idle — pausing during streaming eliminates ~2
+  // extra Ink redraws per second that were caused by the timer firing even
+  // though the cursor is not visible in that state.
+  const isActive = appState === "streaming" || appState === "tool_running" || isWaiting;
   useEffect(() => {
+    if (isActive) return;
     const id = setInterval(() => setCursorVisible(v => !v), 530);
     return () => clearInterval(id);
-  }, []);
+  }, [isActive]);
 
+  // ── Spinner: only animate during the "waiting for first token" phase ──────
+  // Once text starts arriving the streaming text itself is the visual feedback;
+  // animating the spinner at 100 ms adds 10 extra Ink redraws per second for
+  // no user-visible benefit and is the primary cause of terminal flickering.
   useEffect(() => {
-    const id = setInterval(() => {
-      if (isWaiting || appState === "streaming" || appState === "tool_running") {
-        setSpinnerFrame(f => f + 1);
-      }
-    }, 100);
+    if (!isWaiting) return;
+    const id = setInterval(() => setSpinnerFrame(f => f + 1), 100);
     return () => clearInterval(id);
-  }, [isWaiting, appState]);
+  }, [isWaiting]);
+
+  // ── Buffer display tick: drives streaming-text updates ────────────────────
+  // Fires only while text is actively streaming (not during tool_running where
+  // the buffer is empty). 180 ms gives ~5-6 redraws/s — smooth but half the
+  // rate of the previous 100 ms spinner approach.
+  const [, setBufferTick] = useState(0);
+  useEffect(() => {
+    if (appState !== "streaming" || isWaiting) return;
+    const id = setInterval(() => setBufferTick(n => n + 1), 180);
+    return () => clearInterval(id);
+  }, [appState, isWaiting]);
 
   // ---------------------------------------------------------------------------
   // Entry management
@@ -208,6 +225,16 @@ export function App(props: AppProps): React.ReactElement {
     setEntries(entriesRef.current);
   }, []);
 
+  /** Patches the description of a running tool card (fired before execution). */
+  const setToolDescription = useCallback((toolId: string, description: string) => {
+    entriesRef.current = entriesRef.current.map(e =>
+      e.kind === "tool_call" && e.toolId === toolId
+        ? { ...e, description }
+        : e
+    );
+    setEntries(entriesRef.current);
+  }, []);
+
   /** Commits all active entries to the Static region after a turn completes. */
   const commitEntries = useCallback(() => {
     setCommittedCount(entriesRef.current.length);
@@ -228,6 +255,12 @@ export function App(props: AppProps): React.ReactElement {
         setAppState("tool_running");
         setIsWaiting(false); // model went straight to a tool call
         addEntry({ kind: "tool_call", name: event.name, toolId: event.id, status: "running" });
+        break;
+
+      case "tool_call_description":
+        // Fired right before execution with the input summary (e.g. "src/main.ts").
+        // Updates the running card so the user sees "⟳ ReadFile  src/main.ts".
+        setToolDescription(event.id, event.description);
         break;
 
       case "tool_result":
@@ -320,7 +353,7 @@ export function App(props: AppProps): React.ReactElement {
         setPendingExit(true);
         break;
     }
-  }, [streaming, addEntry, updateToolEntry, commitEntries]);
+  }, [streaming, addEntry, updateToolEntry, setToolDescription, commitEntries]);
 
   // ---------------------------------------------------------------------------
   // Submit

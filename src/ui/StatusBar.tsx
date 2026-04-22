@@ -12,14 +12,21 @@ interface StatusBarProps {
 
 export function StatusBar({ model, mode, profile, usage, isStreaming }: StatusBarProps): React.ReactElement {
   const { totalInputTokens, totalOutputTokens, currentRatio, contextWindowSize } = usage;
-  const totalTokens = totalInputTokens + totalOutputTokens;
+
+  // Use actual API token counts when available (requires stream_options.include_usage).
+  // Fall back to estimated tokens derived from the context-usage ratio so the
+  // status bar always shows a meaningful number even with APIs that don't
+  // return usage data in streaming responses.
+  const actualTokens = totalInputTokens + totalOutputTokens;
+  const estimatedTokens = contextWindowSize > 0 ? Math.round(currentRatio * contextWindowSize) : 0;
+  const displayTokens = actualTokens > 0 ? actualTokens : estimatedTokens;
 
   // Determine color based on ratio
   const tokenColor = currentRatio >= 0.85 ? "red" : currentRatio >= 0.70 ? "yellow" : "green";
 
   const contextStr = contextWindowSize > 0
-    ? `${totalTokens.toLocaleString()}/${(contextWindowSize / 1000).toFixed(0)}k`
-    : `${totalTokens.toLocaleString()}`;
+    ? `${displayTokens.toLocaleString()}/${(contextWindowSize / 1000).toFixed(0)}k`
+    : `${displayTokens.toLocaleString()}`;
 
   const ratioStr = contextWindowSize > 0
     ? ` (${Math.round(currentRatio * 100)}%)`
