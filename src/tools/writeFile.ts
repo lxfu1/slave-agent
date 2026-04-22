@@ -4,6 +4,8 @@ import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import { registerTool } from "./registry.js";
 import { isPathSafe } from "./pathUtils.js";
 
+const MAX_CONTENT_BYTES = 10 * 1024 * 1024; // 10 MB
+
 const writeFileTool: Tool = {
   name: "WriteFile",
   description:
@@ -31,6 +33,14 @@ const writeFileTool: Tool = {
     if (!isPathSafe(filePath, ctx.cwd, ctx.profileDir)) {
       return {
         content: `Security error: path "${inputPath}" is outside the working directory`,
+        isError: true,
+      };
+    }
+
+    const byteSize = Buffer.byteLength(content, "utf-8");
+    if (byteSize > MAX_CONTENT_BYTES) {
+      return {
+        content: `Error: content too large (${(byteSize / 1024 / 1024).toFixed(1)} MB). Maximum allowed is 10 MB.`,
         isError: true,
       };
     }

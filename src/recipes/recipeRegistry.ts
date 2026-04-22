@@ -13,6 +13,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import yaml from "js-yaml";
 import { scanForInjection } from "../context/promptBuilder.js";
+import { getTool } from "../tools/registry.js";
 
 export interface RecipeFrontmatter {
   name: string;
@@ -175,9 +176,21 @@ export function expandRecipe(
     return null;
   }
 
+  // Validate allowedTools against the live registry. Unknown tool names are
+  // silently wrong — they'd match nothing and give the user a false sense of
+  // pre-approval. Warn and strip them so the bug surfaces at load time.
+  const rawAllowedTools = recipe.frontmatter.allowedTools ?? [];
+  const allowedTools = rawAllowedTools.filter(name => {
+    if (getTool(name)) return true;
+    process.stderr.write(
+      `[slave-agent] Recipe "${recipe.name}": allowedTool "${name}" not found in registry — skipped\n`
+    );
+    return false;
+  });
+
   return {
     markerText: invocation.trim(),
     bodyText,
-    allowedTools: recipe.frontmatter.allowedTools ?? [],
+    allowedTools,
   };
 }

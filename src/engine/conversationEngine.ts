@@ -20,6 +20,7 @@ import {
   appendMessage,
   createSession,
   loadMessagesForSession,
+  pruneOldSessions,
   rowsToChatMessages,
   setSessionTitle,
   updateSessionStats,
@@ -303,6 +304,9 @@ export class ConversationEngine {
     if (this.opts.config.memory.autoUpdate) {
       yield* this.autoUpdateNotes();
     }
+
+    // Prune old sessions on every turn (cheap SQL, prevents unbounded DB growth)
+    pruneOldSessions(this.opts.db);
   }
 
   // ---------------------------------------------------------------------------
@@ -328,10 +332,10 @@ export class ConversationEngine {
       for await (const event of streamChat(this.opts.modelClient, {
         model: this.currentModel,
         messages: this.messages,
-        tools: toolDefs.length > 0 ? toolDefs : undefined,
+        ...(toolDefs.length > 0 && { tools: toolDefs }),
         systemPrompt,
         maxTokens: this.opts.config.model.maxTokens,
-        abortSignal: this.abortController.signal,
+        abortSignal: this.abortController!.signal,
       })) {
         switch (event.type) {
           case "text_delta":
@@ -385,7 +389,7 @@ export class ConversationEngine {
       const assistantMessage: ChatMessage = {
         role: "assistant",
         content: assistantContent || null,
-        tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        ...(accumulatedToolCalls.length > 0 && { tool_calls: accumulatedToolCalls }),
       };
 
       this.messages = [...this.messages, assistantMessage];
@@ -518,7 +522,7 @@ export class ConversationEngine {
       sessionId: this.sessionId,
       permissionMode: this.permissionMode,
       db: this.opts.db,
-      abortSignal: this.abortController?.signal,
+      ...(this.abortController && { abortSignal: this.abortController.signal }),
     };
 
     let result;
@@ -587,7 +591,17 @@ export class ConversationEngine {
 
   private waitForPermission(requestId: string): Promise<PermissionDecision> {
     return new Promise(resolve => {
-      this.pendingPermissions.set(requestId, resolve);
+      // Auto-deny after 30 s so a missed UI event never hangs the tool loop.
+      const timeout = setTimeout(() => {
+        if (this.pendingPermissions.delete(requestId)) {
+          resolve("deny");
+        }
+      }, 30_000);
+
+      this.pendingPermissions.set(requestId, (decision: PermissionDecision) => {
+        clearTimeout(timeout);
+        resolve(decision);
+      });
     });
   }
 
@@ -627,9 +641,11 @@ export class ConversationEngine {
           title: `[compressed] ${new Date().toISOString().slice(0, 10)}`,
           model: this.currentModel,
           parentSessionId: archivedSessionId,
-          inputTokens: 0,
-          outputTokens: 0,
-          estimatedCostUsd: 0,
+          // Carry forward accumulated token stats so /cost and history
+          // reflect the true lifetime cost of this conversation chain.
+          inputTokens: this.totalInputTokens,
+          outputTokens: this.totalOutputTokens,
+          estimatedCostUsd: this.estimatedCostUsd,
         });
 
         // Persist the compressed messages under the new session
@@ -645,6 +661,11 @@ export class ConversationEngine {
         }
 
         this.sessionId = newSessionId;
+        // Sync flushed counters so the next updateSessionStats call does not
+        // double-count tokens that were already written to the new session row.
+        this.flushedInputTokens = this.totalInputTokens;
+        this.flushedOutputTokens = this.totalOutputTokens;
+        this.flushedCostUsd = this.estimatedCostUsd;
         this.messages = result.messages;
         yield { type: "compressed", summary: result.summary, trigger };
         yield { type: "messages_updated", messages: this.messages };
@@ -742,13 +763,34 @@ export class ConversationEngine {
         };
         break;
 
-      case "resume":
+      case "resume": {
+        const targetId = result.sessionId;
+        if (!targetId) {
+          yield { type: "command_output", message: "Usage: /resume <session-id>", kind: "error" };
+          break;
+        }
+        const rows = loadMessagesForSession(this.opts.db, targetId);
+        if (rows.length === 0) {
+          yield {
+            type: "command_output",
+            message: `Session ${targetId} not found. Use /history to list available sessions.`,
+            kind: "error",
+          };
+          break;
+        }
+        clearSessionTasks(this.sessionId);
+        this.messages = rowsToChatMessages(rows);
+        this.sessionId = targetId;
+        this.isFirstMessage = false;
+        this.invalidateSystemPrompt();
+        yield { type: "messages_updated", messages: this.messages };
         yield {
           type: "command_output",
-          message: "Use --resume flag at startup to restore a session. Run: slave --resume [session-id]",
+          message: `Restored session ${targetId.slice(0, 8)} (${rows.length} messages)`,
           kind: "info",
         };
         break;
+      }
 
       case "switch_profile":
         yield {
@@ -873,8 +915,14 @@ Rules:
       // Reuse notes_shown to surface the written note in the UI so the user
       // knows what was persisted (same event the /notes show command uses).
       yield { type: "notes_shown", content: `✎ Auto-saved to NOTES.md:\n\n${noteText}` };
-    } catch {
-      // Non-fatal — notes update failure should never break the conversation
+    } catch (err) {
+      // Non-fatal but visible — surface the error so the user knows
+      // why memory was not updated (e.g. disk full, permission denied).
+      yield {
+        type: "command_output",
+        message: `NOTES.md auto-update failed: ${err instanceof Error ? err.message : String(err)}`,
+        kind: "error",
+      };
     }
   }
 

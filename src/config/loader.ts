@@ -60,7 +60,10 @@ export async function loadConfig(profileDir: string): Promise<SlaveAgentConfig> 
     throw makeError("CONFIG_PARSE_ERROR", `Config file is not a YAML object: ${configPath}`);
   }
 
-  const merged = deepMerge(DEFAULT_CONFIG, parsed as Partial<SlaveAgentConfig>);
+  // YAML conventionally uses snake_case; the TypeScript config uses camelCase.
+  // Convert all object keys recursively so both styles work in config.yaml.
+  const normalized = convertKeysToCamelCase(parsed) as Partial<SlaveAgentConfig>;
+  const merged = deepMerge(DEFAULT_CONFIG, normalized);
   const substituted = substituteEnvVars(merged) as SlaveAgentConfig;
 
   validateConfig(substituted, configPath);
@@ -80,8 +83,11 @@ function buildConfigFromEnv(base: SlaveAgentConfig): SlaveAgentConfig {
   }
 
   if (process.env["AUX_BASE_URL"] && process.env["AUX_API_KEY"] && process.env["AUX_MODEL_NAME"]) {
+    const rawProvider = process.env["AUX_PROVIDER"] ?? "openai";
+    const provider: "openai" | "custom" =
+      rawProvider === "custom" ? "custom" : "openai";
     config.auxiliary = {
-      provider: "openai",
+      provider,
       baseUrl: process.env["AUX_BASE_URL"],
       apiKey: process.env["AUX_API_KEY"],
       name: process.env["AUX_MODEL_NAME"],
@@ -106,6 +112,25 @@ function validateConfig(config: SlaveAgentConfig, source: string): void {
       `Configuration errors in ${source}:\n  - ${errors.join("\n  - ")}`
     );
   }
+}
+
+/**
+ * Recursively converts all object keys from snake_case to camelCase.
+ * Array elements and non-string values are passed through unchanged.
+ * User-defined keys (e.g. MCP server names, env var names) that are not
+ * snake_case are left intact because the regex only matches _[a-z].
+ */
+function convertKeysToCamelCase(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(convertKeysToCamelCase);
+  if (typeof value === "object" && value !== null) {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      const camelKey = k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+      result[camelKey] = convertKeysToCamelCase(v);
+    }
+    return result;
+  }
+  return value;
 }
 
 /** Recursively replaces ${VAR_NAME} placeholders with process.env values */

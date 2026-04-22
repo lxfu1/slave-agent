@@ -81,7 +81,7 @@ export function routeCommand(input: string, ctx: CommandContext): CommandResult 
       return handleSearchCommand(args, ctx);
 
     case "compact":
-      return { type: "compact", focus: args || undefined };
+      return args ? { type: "compact", focus: args } : { type: "compact" };
 
     case "model":
       return handleModelCommand(args, ctx);
@@ -93,7 +93,7 @@ export function routeCommand(input: string, ctx: CommandContext): CommandResult 
       return { type: "clear_session" };
 
     case "resume":
-      return { type: "resume", sessionId: args || undefined };
+      return args ? { type: "resume", sessionId: args } : { type: "resume" };
 
     case "profile":
       return handleProfileCommand(args, ctx);

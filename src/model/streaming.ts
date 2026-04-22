@@ -38,8 +38,10 @@ export async function* streamChat(
 ): AsyncGenerator<StreamEvent, void, unknown> {
   const messages = buildMessages(opts.systemPrompt, opts.messages);
   const toolCallBuffers = new Map<string, ToolCallBuffer>();
-  // Maps tool call index → id. OpenAI streaming omits the id on all chunks except the first.
-  const toolCallOrder: string[] = [];
+  // Maps tool call index → id. OpenAI streaming omits the id on all chunks
+  // except the first. A Map is used instead of a sparse array so that an
+  // arbitrarily large index value doesn't allocate a huge array.
+  const toolCallOrder = new Map<number, string>();
 
   let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
 
@@ -48,11 +50,12 @@ export async function* streamChat(
       {
         model: opts.model,
         messages,
-        tools: opts.tools as OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
+        ...(opts.tools !== undefined && { tools: opts.tools as unknown as OpenAI.Chat.Completions.ChatCompletionTool[] }),
         stream: true,
-        max_tokens: opts.maxTokens,
+        // OpenAI API uses null (not undefined) to indicate "no limit"
+        max_tokens: opts.maxTokens ?? null,
       },
-      { signal: opts.abortSignal }
+      { ...(opts.abortSignal && { signal: opts.abortSignal }) }
     );
   } catch (err) {
     yield {
@@ -87,12 +90,12 @@ export async function* streamChat(
             const name = tc.function?.name ?? "";
             toolCallBuffers.set(tc.id, { name, argsBuffer: "" });
             // Map index → id for subsequent chunks that omit the id
-            toolCallOrder[idx] = tc.id;
+            toolCallOrder.set(idx, tc.id);
             yield { type: "tool_call_start", id: tc.id, name };
           }
 
           // Resolve the active ID from tc.id (first chunk) or the index map
-          const activeId = tc.id ?? toolCallOrder[idx];
+          const activeId = tc.id ?? toolCallOrder.get(idx);
           if (activeId) {
             const argsDelta = tc.function?.arguments ?? "";
             if (argsDelta) {
@@ -109,8 +112,10 @@ export async function* streamChat(
       // Finish reason signals end of this choice
       const finishReason = choice.finish_reason;
       if (finishReason === "tool_calls" || finishReason === "stop" || finishReason === "length") {
-        // Emit tool_call_done for all accumulated calls in order
-        for (const callId of toolCallOrder) {
+        // Emit tool_call_done for all accumulated calls in index order
+        for (const callId of [...toolCallOrder.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([, id]) => id)) {
           const buf = toolCallBuffers.get(callId);
           if (buf) {
             yield {

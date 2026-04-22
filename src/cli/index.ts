@@ -229,8 +229,9 @@ async function main(): Promise<void> {
       modelClient,
       auxiliaryClient,
       recipes,
-      initialMessages,
-      permissionMode: cliArgs.permissionMode,
+      // exactOptionalPropertyTypes: don't pass optional props as explicit undefined
+      ...(initialMessages !== undefined && { initialMessages }),
+      ...(cliArgs.permissionMode !== undefined && { permissionMode: cliArgs.permissionMode }),
       profileName: cliArgs.profile ?? "default",
     })
   );

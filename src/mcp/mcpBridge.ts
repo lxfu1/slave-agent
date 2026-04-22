@@ -89,7 +89,7 @@ async function connectServer(name: string, config: McpServerConfig): Promise<Mcp
   const transport = new StdioClientTransport({
     command: config.command,
     args: config.args ?? [],
-    env: config.env ? { ...process.env, ...config.env } as Record<string, string> : undefined,
+    ...(config.env && { env: { ...process.env, ...config.env } as Record<string, string> }),
   });
 
   try {
@@ -135,10 +135,11 @@ async function connectServer(name: string, config: McpServerConfig): Promise<Mcp
 
 interface McpToolDescriptor {
   name: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
+  // Allow explicit undefined from the MCP SDK's optional typing
+  description?: string | undefined;
+  inputSchema?: Record<string, unknown> | undefined;
   /** MCP 2025-03-26 spec: annotations.readOnlyHint signals a side-effect-free tool */
-  annotations?: { readOnlyHint?: boolean };
+  annotations?: { readOnlyHint?: boolean | undefined; [key: string]: unknown } | undefined;
 }
 
 function wrapMcpTool(

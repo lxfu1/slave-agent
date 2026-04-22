@@ -251,7 +251,9 @@ export function rowsToChatMessages(rows: MessageRow[]): ChatMessage[] {
       content: row.content,
     };
     if (row.toolCallsJson) {
-      base.tool_calls = JSON.parse(row.toolCallsJson) as ChatMessage["tool_calls"];
+      // Cast to the concrete array type (not ChatMessage["tool_calls"] which
+      // includes undefined and would violate exactOptionalPropertyTypes)
+      base.tool_calls = JSON.parse(row.toolCallsJson) as import("../types/messages.js").OpenAIToolCall[];
     }
     if (row.toolCallId) {
       base.tool_call_id = row.toolCallId;

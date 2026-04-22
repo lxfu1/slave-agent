@@ -1,38 +1,40 @@
 # slave-agent
 
-有记忆的终端 AI 助手，打工人的标配。
+> [中文文档](README.zh-CN.md)
 
-直连 OpenAI-compatible API，跨会话持久化记忆，结构化 slash 命令，可扩展工具体系。
+A terminal AI assistant with memory (Hermes Agent simplified version) — an essential tool for every worker.
 
----
-
-## 功能特性
-
-- **持久化记忆** — `NOTES.md` 跨会话保留上下文，自动注入每次对话的 system prompt；启用 `auto_update` 后每轮结束自动判断并写入
-- **会话链归档** — 上下文压缩时创建新 session 并通过 `parent_session_id` 链式关联旧会话，历史永不丢失
-- **三区上下文压缩** — 超长对话自动归档中间历史，保留首轮和最近 ~20k tokens，对话永不截断
-- **Slash 命令** — `/notes`、`/history`、`/search`、`/compact`、`/cost` 等，`/help` 查看全部
-- **Recipes 系统** — 自定义 `.md` 模板文件，`/recipe-name [参数]` 一键调用；支持 `watchPaths` 在修改匹配文件后自动推荐相关 recipe
-- **MCP 工具扩展** — 通过 Model Context Protocol 接入外部工具服务器
-- **会话持久化** — SQLite 存储全部历史，`/resume` 恢复任意历史会话，支持全文搜索
-- **Profile 隔离** — 多 profile 独立配置、记忆、会话数据，互不干扰
-- **权限守卫** — `ask`/`auto` 两种模式，危险命令（`rm -rf` 等）强制确认，路径安全限制；支持 `disabledTools` 彻底屏蔽指定工具
-- **富文本 UI** — React + Ink 渲染，流式输出，状态栏实时显示 token 用量与费用
-- **输入增强** — 光标定位（←/→ 移动，可中途修改）、历史记录（↑/↓ 切换）、streaming 期间输入排队不丢失
+Connects directly to OpenAI-compatible APIs, features cross-session persistent memory, structured slash commands, and an extensible tool system.
 
 ---
 
-## 快速开始
+## Features
 
-### 安装依赖
+- **Persistent Memory** — `NOTES.md` retains context across sessions and is automatically injected into the system prompt every round; when `auto_update` is enabled, it automatically evaluates and writes at the end of each round
+- **Session Chain Archiving** — When context compression is triggered, a new session is created and linked to the old session via `parent_session_id`, ensuring history is never lost
+- **Three-Zone Context Compression** — Automatically archives the middle history for extra-long conversations, preserving the first round and the most recent ~20k tokens, so conversations are never truncated
+- **Slash Commands** — `/notes`, `/history`, `/search`, `/compact`, `/cost`, and more; use `/help` to see all available commands
+- **Recipes System** — Custom `.md` template files; invoke with `/recipe-name [args]` in one click; supports `watchPaths` to auto-recommend related recipes when matching files are modified
+- **MCP Tool Extensions** — Connect to external tool servers via the Model Context Protocol
+- **Session Persistence** — SQLite stores all history; `/resume` restores any historical session; supports full-text search
+- **Profile Isolation** — Multiple profiles with independent configurations, memory, and session data, completely isolated from each other
+- **Permission Guard** — `ask`/`auto` modes; dangerous commands (e.g., `rm -rf`) force confirmation; path safety restrictions; supports `disabledTools` to completely block specified tools
+- **Rich Text UI** — Rendered with React + Ink, streaming output, status bar displays token usage and cost in real time
+- **Enhanced Input** — Cursor positioning (←/→ to move, edit mid-line), history navigation (↑/↓), queued input during streaming without loss
+
+---
+
+## Quick Start
+
+### Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 配置
+### Configuration
 
-复制示例配置文件并填写 API 信息：
+Copy the example configuration file and fill in your API details:
 
 ```bash
 cp .env.example .env
@@ -44,40 +46,40 @@ MODEL_API_KEY=sk-...
 MODEL_NAME=gpt-4o
 ```
 
-或者创建 `~/.slave-agent/config.yaml`（见 [配置文件](#配置文件)）。
+Or create `~/.slave-agent/config.yaml` (see [Configuration File](#configuration-file)).
 
-### 启动
+### Launch
 
 ```bash
-# 开发模式（tsx 热重载）
+# Development mode (tsx hot reload)
 npm run dev
 
-# 构建后运行
+# Build and run
 npm run build
 npm start
 
-# 全局安装后使用 slave 命令
+# Global installation to use the `slave` command
 npm install -g .
 slave
 ```
 
 ---
 
-## 命令行参数
+## CLI Arguments
 
 ```
 slave [options]
 
 OPTIONS
-  --profile <name>        使用指定 profile（默认: "default"）
-  --model <name>          覆盖配置中的模型名
-  --resume <session-id>   恢复指定历史会话
-  --auto                  以 auto 权限模式启动（无需确认）
-  --version, -v           打印版本号
-  --help, -h              打印帮助
+  --profile <name>        Use the specified profile (default: "default")
+  --model <name>          Override the model name in config
+  --resume <session-id>   Resume a specific historical session
+  --auto                  Start in auto permission mode (no confirmation)
+  --version, -v           Print version number
+  --help, -h              Print help
 ```
 
-示例：
+Examples:
 
 ```bash
 slave --profile work
@@ -88,91 +90,91 @@ slave --auto
 
 ---
 
-## 终端输入操作
+## Terminal Input Operations
 
-| 操作 | 效果 |
-|------|------|
-| `←` / `→` | 在输入行内移动光标，支持中途插入或删除 |
-| `↑` / `↓` | 切换历史输入（最多 50 条），↓ 返回当前编辑内容 |
-| `Backspace` / `Delete` | 删除光标左侧字符 |
-| 粘贴 / 多字符输入 | 光标正确跳到所有字符末尾 |
-| streaming 期间打字 | 字符排队显示（灰色 + `(queued)`），idle 后可继续编辑提交 |
-| `Ctrl+C`（streaming 中） | 中断请求，已流出的部分内容保留在屏幕上（标注 `[interrupted]`） |
-| `Ctrl+C`（idle，连按两次） | 退出 |
+| Operation | Effect |
+|-----------|--------|
+| `←` / `→` | Move cursor within the input line; supports mid-line insertion or deletion |
+| `↑` / `↓` | Switch through input history (up to 50 entries); ↓ returns to current editing content |
+| `Backspace` / `Delete` | Delete character to the left of the cursor |
+| Paste / Multi-character input | Cursor correctly jumps to the end of all characters |
+| Typing during streaming | Characters are queued (gray + `(queued)`); can continue editing after idle |
+| `Ctrl+C` (during streaming) | Interrupt the request; already streamed content remains on screen (marked `[interrupted]`) |
+| `Ctrl+C` (idle, press twice) | Exit |
 
 ---
 
-## 状态栏
+## Status Bar
 
-底部状态栏实时显示：
+The bottom status bar displays in real time:
 
 ```
 ● slave-agent │ gpt-4o    tokens: 1234/128k (15%)  │  $0.0042  │  mode:ask  │  profile:default
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `●` / `○` | streaming 中 / idle |
-| `tokens` | 本次会话已用 token / 模型上限，超 70% 变黄，超 85% 变红 |
-| `$X.XXXX` | 本次会话估算费用（USD） |
-| `mode` | 当前权限模式（ask / auto） |
-| `profile` | 当前 profile 名称 |
+| Field | Description |
+|-------|-------------|
+| `●` / `○` | Streaming / idle |
+| `tokens` | Session used tokens / model limit; turns yellow above 70%, red above 85% |
+| `$X.XXXX` | Estimated session cost (USD) |
+| `mode` | Current permission mode (ask / auto) |
+| `profile` | Current profile name |
 
 ---
 
-## Slash 命令
+## Slash Commands
 
-在对话中输入以下命令：
+Enter the following commands during a conversation:
 
-| 命令 | 说明 |
-|------|------|
-| `/help` | 显示所有可用命令和 recipe |
-| `/notes [show\|clear]` | 查看或清空持久化笔记（NOTES.md） |
-| `/history [n]` | 显示最近 n 条会话（默认 10） |
-| `/search <关键词>` | 全文搜索所有历史消息 |
-| `/compact [焦点描述]` | 手动触发上下文归档压缩 |
-| `/model [名称]` | 查看或切换当前模型 |
-| `/cost` | 显示本次会话 token 消耗和估算费用 |
-| `/clear` | 清空当前会话上下文（记忆保留） |
-| `/resume [会话ID]` | 提示用 `--resume` 参数恢复会话 |
-| `/profile [名称]` | 查看或切换 profile |
-| `/recipes` | 列出已安装的 recipe |
-| `/mode [ask\|auto]` | 切换工具执行权限模式 |
-| `/exit` | 退出 slave-agent（别名：`/quit`） |
+| Command | Description |
+|---------|-------------|
+| `/help` | Display all available commands and recipes |
+| `/notes [show\|clear]` | View or clear persistent notes (NOTES.md) |
+| `/history [n]` | Show the last n sessions (default 10) |
+| `/search <keyword>` | Full-text search all historical messages |
+| `/compact [focus description]` | Manually trigger context archival compression |
+| `/model [name]` | View or switch the current model |
+| `/cost` | Show current session token consumption and estimated cost |
+| `/clear` | Clear the current session context (memory is preserved) |
+| `/resume [session-id]` | Prompt to resume a session using the `--resume` argument |
+| `/profile [name]` | View or switch profile |
+| `/recipes` | List installed recipes |
+| `/mode [ask\|auto]` | Switch tool execution permission mode |
+| `/exit` | Exit slave-agent (alias: `/quit`) |
 
 ---
 
-## Recipes 系统
+## Recipes System
 
-Recipe 是可复用的 prompt 模板，存放为 `.md` 文件。
+A recipe is a reusable prompt template stored as a `.md` file.
 
-### 存放位置
+### Storage Locations
 
-- **全局**：`~/.slave-agent/recipes/`
-- **项目级**（优先）：`.slave-agent/recipes/`
+- **Global**: `~/.slave-agent/recipes/`
+- **Project-level** (priority): `.slave-agent/recipes/`
 
-### Recipe 文件格式
+### Recipe File Format
 
 ```markdown
 ---
 name: review
-description: 对当前改动进行代码审查
+description: Perform a code review on current changes
 allowedTools: [ReadFile, SearchCode, ListFiles]
 ---
-请对以下改动进行代码审查，重点关注安全、性能、可维护性。
+Please perform a code review on the following changes, focusing on security, performance, and maintainability.
 
 $ARGUMENTS
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `name` | 调用名称（小写字母 + 连字符） |
-| `description` | `/recipes` 列表中显示的描述 |
-| `allowedTools` | 该 recipe 执行时预授权的工具（跳过权限确认） |
-| `watchPaths` | 文件路径匹配时自动推荐该 recipe（可选） |
-| `$ARGUMENTS` | 调用时传入的参数占位符 |
+| Field | Description |
+|-------|-------------|
+| `name` | Invocation name (lowercase letters + hyphens) |
+| `description` | Description shown in the `/recipes` list |
+| `allowedTools` | Tools pre-authorized during recipe execution (skips permission confirmation) |
+| `watchPaths` | Auto-recommend this recipe when file paths match (optional) |
+| `$ARGUMENTS` | Placeholder for arguments passed during invocation |
 
-### 调用 Recipe
+### Invoking a Recipe
 
 ```
 /review src/main.ts
@@ -182,76 +184,76 @@ $ARGUMENTS
 
 ---
 
-## 持久化记忆
+## Persistent Memory
 
-### NOTES.md — 工作笔记（可读写）
+### NOTES.md — Working Notes (Read/Write)
 
-路径：`~/.slave-agent/memory/NOTES.md`（或 profile 目录下）
+Path: `~/.slave-agent/memory/NOTES.md` (or under the profile directory)
 
-- agent 可通过 `WriteNotes` 工具追加笔记
-- 启用 `memory.auto_update: true` 后，每轮对话结束自动判断是否有值得保留的信息并写入；写入时在终端展示保存的内容
-- 每次会话启动自动注入到 system prompt
-- `/notes show` 查看，`/notes clear` 清空
+- The agent can append notes via the `WriteNotes` tool
+- When `memory.auto_update: true` is enabled, it automatically evaluates whether information is worth retaining and writes it at the end of each round; saved content is displayed in the terminal upon writing
+- Automatically injected into the system prompt at the start of each session
+- `/notes show` to view, `/notes clear` to clear
 
-### PROFILE.md — 用户偏好（只读）
+### PROFILE.md — User Preferences (Read-Only)
 
-路径：`~/.slave-agent/memory/PROFILE.md`
+Path: `~/.slave-agent/memory/PROFILE.md`
 
-只有用户手动编辑，agent 不会修改。适合放置：
+Only editable by the user; the agent will not modify it. Suitable for placing:
 
 ```markdown
-我是一名后端工程师，主要使用 Go 和 TypeScript。
-代码风格：函数式优先，避免过度抽象。
-回答请用中文，代码注释用英文。
+I am a backend engineer, primarily using Go and TypeScript.
+Code style: functional-first, avoid over-abstraction.
+Please respond in Chinese; code comments in English.
 ```
 
 ---
 
-## 上下文压缩
+## Context Compression
 
-对话上下文分三个区域管理：
+Conversation context is managed in three zones:
 
 ```
 ┌──────────────────────────────────┐
-│  HEAD（锚定区）                   │  system prompt + 首轮对话，永不压缩
+│  HEAD (Anchor Zone)              │  system prompt + first round, never compressed
 ├──────────────────────────────────┤
-│  MIDDLE（归档区）                 │  超阈值后用 LLM 生成摘要替换
+│  MIDDLE (Archive Zone)           │  Replaced with LLM-generated summary when threshold exceeded
 ├──────────────────────────────────┤
-│  TAIL（活跃区）                   │  最近 ~20k tokens，完整保留
+│  TAIL (Active Zone)              │  Most recent ~20k tokens, fully preserved
 └──────────────────────────────────┘
 ```
 
-触发时机（可在配置中调整）：
-- **70%** 上下文用量 → 状态栏警告（黄色）
-- **85%** 上下文用量 → 自动触发归档
-- 手动触发：`/compact [焦点描述]`
+Trigger thresholds (adjustable in config):
+- **70%** context usage → Status bar warning (yellow)
+- **85%** context usage → Auto-trigger archival
+- Manual trigger: `/compact [focus description]`
 
 ---
 
-## 工具系统
+## Tool System
 
-### 内置工具
+### Built-in Tools
 
-| 工具 | 说明 | 权限 |
-|------|------|------|
-| `ReadFile` | 读取文件内容，支持行号范围（限 cwd / profile 目录内） | 只读 |
-| `WriteFile` | 创建或覆盖文件（限 cwd / profile 目录内） | 写入 |
-| `EditFile` | 精确字符串替换；支持 `replace_all: true` 全量替换 | 写入 |
-| `ListFiles` | Glob 模式列出文件 | 只读 |
-| `SearchCode` | 正则搜索文件内容（优先 rg，备用 grep），全局结果数限制 | 只读 |
-| `RunCommand` | 执行 shell 命令，30s 超时 | 高危 |
-| `WriteNotes` | 追加内容到 NOTES.md | 写入 |
-| `ReadNotes` | 读取当前 NOTES.md | 只读 |
-| `CreateTask` | 创建会话内任务（ID 从 1 开始，`/clear` 后重置） | 写入 |
-| `UpdateTask` | 更新任务状态、`blockedBy`、`blocks` | 写入 |
-| `ListTasks` | 列出当前会话所有任务 | 只读 |
-| `GetTask` | 获取任务详情（含依赖关系） | 只读 |
-| `SearchHistory` | 全文检索历史消息（跨所有会话） | 只读 |
-| `ListSessions` | 列出历史会话（含会话链父子关系） | 只读 |
+| Tool | Description | Permission |
+|------|-------------|------------|
+| `ReadFile` | Read file content, supports line range (limited to cwd / profile directory) | Read-only |
+| `WriteFile` | Create or overwrite files (limited to cwd / profile directory) | Write |
+| `EditFile` | Precise string replacement; supports `replace_all: true` for global replacement | Write |
+| `ListFiles` | List files using glob patterns | Read-only |
+| `SearchCode` | Regex search file content (prefers rg, falls back to grep), global result limit | Read-only |
+| `RunCommand` | Execute shell commands, 30s timeout | High-risk |
+| `WriteNotes` | Append content to NOTES.md | Write |
+| `ReadNotes` | Read current NOTES.md | Read-only |
+| `CreateTask` | Create in-session tasks (IDs start from 1, reset after `/clear`) | Write |
+| `UpdateTask` | Update task status, `blockedBy`, `blocks` | Write |
+| `ListTasks` | List all tasks in the current session | Read-only |
+| `GetTask` | Get task details (including dependencies) | Read-only |
+| `SearchHistory` | Full-text search historical messages (across all sessions) | Read-only |
+| `ListSessions` | List historical sessions (including session chain parent-child relationships) | Read-only |
 
-### MCP 工具扩展
+### MCP Tool Extensions
 
-在 `config.yaml` 中配置 MCP 服务器，工具自动注册为 `mcp__<服务器名>__<工具名>`：
+Configure MCP servers in `config.yaml`; tools are auto-registered as `mcp__<server_name>__<tool_name>`:
 
 ```yaml
 mcp_servers:
@@ -265,46 +267,46 @@ mcp_servers:
     args: ["@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
-MCP 服务器在后台并行连接，不阻塞启动。
+MCP servers connect in the background in parallel without blocking startup.
 
 ---
 
-## 权限系统
+## Permission System
 
-### 模式
+### Modes
 
-| 模式 | 行为 |
-|------|------|
-| `ask`（默认） | 写操作和 shell 命令弹出确认 |
-| `auto` | 自动执行（危险命令仍需确认） |
+| Mode | Behavior |
+|------|----------|
+| `ask` (default) | Prompt for confirmation on write operations and shell commands |
+| `auto` | Auto-execute (dangerous commands still require confirmation) |
 
-切换方式：`/mode auto` 或启动时 `--auto`。
+Switch modes: `/mode auto` or start with `--auto`.
 
-### 权限确认操作
+### Permission Confirmation Actions
 
-出现权限对话框时：
-- `Enter` / `y` — 本次允许（默认）
-- `a` — 本 session 始终允许
-- `n` — 拒绝
+When a permission dialog appears:
+- `Enter` / `y` — Allow this time (default)
+- `a` — Always allow for this session
+- `n` — Deny
 
-### 安全项目目录自动放行
+### Safe Project Directory Auto-Approval
 
-当 `cwd`（当前工作目录）**不是**核心/敏感目录时，`WriteFile` 和 `EditFile` 对目录内文件的操作自动放行，无需确认。
+When `cwd` (current working directory) is **not** a core/sensitive directory, `WriteFile` and `EditFile` operations within the directory are auto-approved without confirmation.
 
-**核心目录**（仍需确认）：
-- 家目录本身 `~`（但 `~/projects/foo` 是安全的）
-- 文件系统根 `/` 及系统树（`/etc`、`/usr`、`/bin` 等）
-- 家目录的敏感子目录（`~/.ssh`、`~/.aws`、`~/.config`、`~/.kube` 等）
+**Core Directories** (still require confirmation):
+- Home directory itself `~` (but `~/projects/foo` is safe)
+- Filesystem root `/` and system trees (`/etc`, `/usr`, `/bin`, etc.)
+- Sensitive subdirectories in home (`~/.ssh`, `~/.aws`, `~/.config`, `~/.kube`, etc.)
 
-`RunCommand` 不受此规则影响，始终走原有的 ask/auto 逻辑。
+`RunCommand` is not affected by this rule and always follows the original ask/auto logic.
 
-### 危险命令强制确认
+### Dangerous Command Force Confirmation
 
-无论任何模式，以下命令始终弹出确认：
+Regardless of mode, the following commands always trigger confirmation:
 
-`rm -rf`、`git push --force`、`git reset --hard`、`sudo`、`dd if=`、`mkfs`、`shutdown`、`kill -9` 等。
+`rm -rf`, `git push --force`, `git reset --hard`, `sudo`, `dd if=`, `mkfs`, `shutdown`, `kill -9`, etc.
 
-### 配置允许/拒绝规则
+### Config Allow/Deny Rules
 
 ```yaml
 permissions:
@@ -317,25 +319,25 @@ permissions:
   deny:
     - "RunCommand(rm *)"
   disabled_tools:
-    - RunCommand     # 完全屏蔽，model 看不到此工具
+    - RunCommand     # Completely hidden from the model
 ```
 
 ---
 
-## 配置文件
+## Configuration File
 
-### 文件位置
+### File Locations
 
-| 路径 | 作用 |
-|------|------|
-| `~/.slave-agent/config.yaml` | 全局默认配置 |
-| `~/.slave-agent/profiles/<name>/config.yaml` | 指定 profile 的配置 |
-| `.env` | 项目根目录环境变量（最高优先级） |
+| Path | Purpose |
+|------|---------|
+| `~/.slave-agent/config.yaml` | Global default config |
+| `~/.slave-agent/profiles/<name>/config.yaml` | Config for a specific profile |
+| `.env` | Environment variables in the project root (highest priority) |
 
-### 完整配置示例
+### Full Configuration Example
 
 ```yaml
-# 主模型配置
+# Main model configuration
 model:
   provider: openai           # openai | custom
   base_url: "${MODEL_BASE_URL}"
@@ -343,7 +345,7 @@ model:
   name: gpt-4o
   timeout_ms: 60000
 
-# 辅助模型（用于上下文归档压缩，建议配置低价模型）
+# Auxiliary model (used for context archival compression, recommend a cheaper model)
 auxiliary:
   provider: openai
   base_url: "${AUX_BASE_URL}"
@@ -351,18 +353,18 @@ auxiliary:
   name: gpt-4o-mini
   timeout_ms: 60000
 
-# 持久化记忆
+# Persistent memory
 memory:
-  auto_update: true          # 每轮结束自动判断并写入 NOTES.md（默认开启）
-  max_inject_tokens: 4000    # 注入 system prompt 的最大 token 数
+  auto_update: true          # Auto-evaluate and write to NOTES.md at end of each round (default on)
+  max_inject_tokens: 4000    # Max tokens to inject into system prompt
 
-# 上下文压缩阈值
+# Context compression thresholds
 context:
-  warn_threshold: 0.70       # 70% 时显示警告
-  compress_threshold: 0.85   # 85% 时自动归档
-  tail_tokens: 20000         # 活跃区保留的 token 数
+  warn_threshold: 0.70       # Warning at 70%
+  compress_threshold: 0.85   # Auto-archive at 85%
+  tail_tokens: 20000         # Tokens to preserve in the active zone
 
-# 权限控制
+# Permission control
 permissions:
   mode: ask                  # ask | auto
   allow:
@@ -373,9 +375,9 @@ permissions:
     - SearchHistory
     - ListSessions
   deny: []
-  disabled_tools: []         # 完全屏蔽的工具名列表，例如 [RunCommand]
+  disabled_tools: []         # List of completely hidden tools, e.g. [RunCommand]
 
-# MCP 服务器
+# MCP servers
 mcp_servers:
   github:
     type: stdio
@@ -387,9 +389,9 @@ mcp_servers:
 
 ---
 
-## Profile 隔离
+## Profile Isolation
 
-不同场景使用独立的配置、记忆和会话：
+Use independent configurations, memory, and sessions for different scenarios:
 
 ```
 ~/.slave-agent/                  # default profile
@@ -401,13 +403,13 @@ mcp_servers:
   recipes/
 
 ~/.slave-agent/profiles/work/    # work profile
-  config.yaml                    # 可使用不同模型、API key
+  config.yaml                    # Can use a different model, API key
   memory/
   sessions.db
   recipes/
 ```
 
-切换方式：
+Switch profiles:
 
 ```bash
 slave --profile work
@@ -416,80 +418,80 @@ slave --profile research
 
 ---
 
-## 会话管理
+## Session Management
 
 ```bash
-# 查看最近 10 条会话
+# View last 10 sessions
 /history
 
-# 查看最近 20 条
+# View last 20 sessions
 /history 20
 
-# 全文搜索历史消息（/search 命令由人使用）
+# Full-text search historical messages (/search command used by humans)
 /search "sqlite WAL mode"
 
-# 恢复历史会话（先用 /history 获取 session ID）
+# Resume a historical session (first use /history to get the session ID)
 slave --resume abc12345
 
-# 清空当前会话（不影响 NOTES.md）
+# Clear the current session (does not affect NOTES.md)
 /clear
 ```
 
-model 也可通过工具主动查阅历史：
+The model can also proactively query history via tools:
 
-- `SearchHistory` — 全文检索所有历史消息，适合回答"我们之前讨论过什么"
-- `ListSessions` — 列出历史会话列表，含会话链父子关系（压缩归档后自动形成）
+- `SearchHistory` — Full-text search all historical messages, great for "what did we discuss before"
+- `ListSessions` — List historical sessions, including session chain parent-child relationships (formed automatically after compression/archival)
 
 ---
 
-## 目录结构
+## Directory Structure
 
 ```
 slave-agent/
 ├── src/
 │   ├── cli/
-│   │   └── index.ts              # 入口：参数解析、启动流程
+│   │   └── index.ts              # Entry: argument parsing, startup flow
 │   ├── engine/
-│   │   ├── conversationEngine.ts # 核心：多轮会话循环、工具调用
-│   │   └── commandRouter.ts      # Slash 命令分发（纯函数）
+│   │   ├── conversationEngine.ts # Core: multi-round session loop, tool invocation
+│   │   └── commandRouter.ts      # Slash command routing (pure functions)
 │   ├── model/
-│   │   ├── client.ts             # OpenAI client 工厂
-│   │   └── streaming.ts          # 流式响应 async generator
+│   │   ├── client.ts             # OpenAI client factory
+│   │   └── streaming.ts          # Streaming response async generator
 │   ├── context/
-│   │   ├── compressor.ts         # 三区归档压缩
-│   │   ├── tokenBudget.ts        # Token 预算追踪与估算
-│   │   └── promptBuilder.ts      # System prompt 动态构建
+│   │   ├── compressor.ts         # Three-zone archival compression
+│   │   ├── tokenBudget.ts        # Token budget tracking and estimation
+│   │   └── promptBuilder.ts      # Dynamic system prompt construction
 │   ├── memory/
-│   │   ├── notesManager.ts       # NOTES.md 读写
-│   │   └── profileReader.ts      # PROFILE.md 只读
+│   │   ├── notesManager.ts       # NOTES.md read/write
+│   │   └── profileReader.ts      # PROFILE.md read-only
 │   ├── tools/
-│   │   ├── registry.ts           # 工具注册中心（支持 disableTools）
-│   │   ├── pathUtils.ts          # 共享路径安全校验
-│   │   ├── searchHistory.ts      # 历史消息全文搜索工具
-│   │   ├── listSessions.ts       # 历史会话列表工具
-│   │   └── *.ts                  # 各工具实现（自注册）
+│   │   ├── registry.ts           # Tool registry (supports disableTools)
+│   │   ├── pathUtils.ts          # Shared path security validation
+│   │   ├── searchHistory.ts      # Historical message full-text search tool
+│   │   ├── listSessions.ts       # Historical session list tool
+│   │   └── *.ts                  # Individual tool implementations (self-registering)
 │   ├── recipes/
-│   │   └── recipeRegistry.ts     # Recipe 加载与模板展开
+│   │   └── recipeRegistry.ts     # Recipe loading and template expansion
 │   ├── session/
-│   │   └── db.ts                 # SQLite 会话存储（WAL + FTS5）
+│   │   └── db.ts                 # SQLite session storage (WAL + FTS5)
 │   ├── permissions/
-│   │   └── guard.ts              # 集中权限决策
+│   │   └── guard.ts              # Centralized permission decisions
 │   ├── mcp/
-│   │   └── mcpBridge.ts          # MCP 协议工具桥接
+│   │   └── mcpBridge.ts          # MCP protocol tool bridge
 │   ├── config/
-│   │   └── loader.ts             # 配置加载与合并
+│   │   └── loader.ts             # Configuration loading and merging
 │   ├── ui/
-│   │   ├── App.tsx               # 主界面（状态机）
-│   │   ├── MessageList.tsx       # 消息列表渲染
-│   │   └── StatusBar.tsx         # 底部状态栏
+│   │   ├── App.tsx               # Main UI (state machine)
+│   │   ├── MessageList.tsx       # Message list rendering
+│   │   └── StatusBar.tsx         # Bottom status bar
 │   └── types/
-│       ├── messages.ts           # ChatMessage、StreamEvent
+│       ├── messages.ts           # ChatMessage, StreamEvent
 │       ├── config.ts             # SlaveAgentConfig
-│       ├── errors.ts             # SlaveAgentError 判别联合
-│       ├── tool.ts               # Tool 接口
-│       └── session.ts            # SessionRow、MessageRow
+│       ├── errors.ts             # SlaveAgentError discriminated union
+│       ├── tool.ts               # Tool interface
+│       └── session.ts            # SessionRow, MessageRow
 ├── .slave-agent/
-│   └── recipes/                  # 项目级 recipe 文件
+│   └── recipes/                  # Project-level recipe files
 ├── .env.example
 ├── package.json
 ├── tsconfig.json
@@ -498,41 +500,41 @@ slave-agent/
 
 ---
 
-## 技术栈
+## Tech Stack
 
-| 层 | 技术 |
-|---|---|
-| 语言 | TypeScript 5（strict + ESM） |
-| 终端 UI | React 18 + Ink 5 |
-| 数据库 | better-sqlite3（WAL 模式 + FTS5 全文索引） |
-| 模型 SDK | openai（OpenAI-compatible API） |
-| 工具协议 | @modelcontextprotocol/sdk |
-| 配置解析 | js-yaml + dotenv |
-| 构建 | tsx（开发）/ tsc（生产） |
+| Layer | Technology |
+|-------|------------|
+| Language | TypeScript 5 (strict + ESM) |
+| Terminal UI | React 18 + Ink 5 |
+| Database | better-sqlite3 (WAL mode + FTS5 full-text index) |
+| Model SDK | openai (OpenAI-compatible API) |
+| Tool Protocol | @modelcontextprotocol/sdk |
+| Config Parsing | js-yaml + dotenv |
+| Build | tsx (dev) / tsc (production) |
 
 ---
 
-## 开发
+## Development
 
 ```bash
-# 类型检查
+# Type check
 npm run typecheck
 
-# 开发模式（tsx，无需构建）
+# Development mode (tsx, no build needed)
 npm run dev
 
-# 生产构建
+# Production build
 npm run build
 
-# 运行构建产物
+# Run the built artifact
 npm start
 ```
 
-### 添加自定义工具
+### Adding Custom Tools
 
-1. 在 `src/tools/` 下新建 `myTool.ts`
-2. 实现 `Tool` 接口，在文件末尾调用 `registerTool(myTool)`
-3. 在 `src/tools/index.ts` 添加 `import "./myTool.js"`
+1. Create `myTool.ts` under `src/tools/`
+2. Implement the `Tool` interface and call `registerTool(myTool)` at the end of the file
+3. Add `import "./myTool.js"` in `src/tools/index.ts`
 
 ```typescript
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
@@ -540,11 +542,11 @@ import { registerTool } from "./registry.js";
 
 const myTool: Tool = {
   name: "MyTool",
-  description: "描述工具的用途",
+  description: "Describe the tool's purpose",
   inputSchema: {
     type: "object",
     properties: {
-      param: { type: "string", description: "参数说明" },
+      param: { type: "string", description: "Parameter description" },
     },
     required: ["param"],
   },
@@ -563,12 +565,12 @@ registerTool(myTool);
 
 ---
 
-## 安全说明
+## Security Notes
 
-- **路径限制**：`ReadFile`、`WriteFile`、`EditFile` 只允许操作当前工作目录或 profile 目录内的文件，越界访问返回错误
-- **安全项目目录**：在非核心目录（项目目录）工作时，文件写操作自动放行；家目录本身、系统路径、敏感隐藏目录仍需确认（详见[安全项目目录自动放行](#安全项目目录自动放行)）
-- **注入扫描**：`NOTES.md`、`PROFILE.md`、recipe 文件注入前自动扫描 prompt injection 特征，命中则跳过注入并在 UI 中显示警告
-- **命令拦截**：`RunCommand` 的危险命令黑名单在任何模式下强制确认
-- **FTS5 安全**：搜索查询自动转义，防止 FTS5 语法注入
-- **工具屏蔽**：通过 `permissions.disabled_tools` 可彻底从模型视野中移除指定工具
-- **日志脱敏**：运行时警告通过 UI 事件流或 stderr 输出，不干扰终端 UI 渲染
+- **Path Restriction**: `ReadFile`, `WriteFile`, `EditFile` only allow operating on files within the current working directory or profile directory; out-of-bounds access returns an error
+- **Safe Project Directory**: When working in non-core directories (project directories), file write operations are auto-approved; the home directory itself, system paths, and sensitive hidden directories still require confirmation (see [Safe Project Directory Auto-Approval](#safe-project-directory-auto-approval))
+- **Injection Scanning**: `NOTES.md`, `PROFILE.md`, and recipe files are automatically scanned for prompt injection signatures before injection; if detected, injection is skipped and a warning is displayed in the UI
+- **Command Interception**: `RunCommand` dangerous command blacklist forces confirmation in any mode
+- **FTS5 Security**: Search queries are automatically escaped to prevent FTS5 syntax injection
+- **Tool Masking**: Specified tools can be completely removed from the model's view via `permissions.disabled_tools`
+- **Log Sanitization**: Runtime warnings are output via UI event stream or stderr without interfering with terminal UI rendering

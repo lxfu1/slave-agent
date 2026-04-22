@@ -21,12 +21,20 @@ export interface Task {
   createdAt: string;
 }
 
-// Session-scoped in-memory store, keyed by sessionId
+// Session-scoped in-memory store, keyed by sessionId.
+// Capped at MAX_TASK_SESSIONS entries; oldest sessions are evicted when the
+// cap is exceeded so the process doesn't accumulate unbounded state.
 const taskStore = new Map<string, Map<string, Task>>();
+const MAX_TASK_SESSIONS = 50;
 
 function getSessionTasks(sessionId: string): Map<string, Task> {
   if (!taskStore.has(sessionId)) {
     taskStore.set(sessionId, new Map());
+    // Evict oldest session if we exceed the cap (Map preserves insertion order)
+    if (taskStore.size > MAX_TASK_SESSIONS) {
+      const oldest = taskStore.keys().next().value;
+      if (oldest !== undefined) taskStore.delete(oldest);
+    }
   }
   return taskStore.get(sessionId)!;
 }
