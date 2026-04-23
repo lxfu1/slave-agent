@@ -347,14 +347,17 @@ model:
   api_key: "${MODEL_API_KEY}"
   name: gpt-4o
   timeout_ms: 60000
+  max_tokens: 8192           # Max tokens the model may generate per response
 
 # Auxiliary model (used for context archival compression, recommend a cheaper model)
+# If omitted, the main model is used for compression as well
 auxiliary:
   provider: openai
   base_url: "${AUX_BASE_URL}"
   api_key: "${AUX_API_KEY}"
   name: gpt-4o-mini
   timeout_ms: 60000
+  max_tokens: 4096
 
 # Persistent memory
 memory:
@@ -375,12 +378,14 @@ permissions:
     - ListFiles
     - SearchCode
     - ReadNotes
+    - ListTasks
+    - GetTask
     - SearchHistory
     - ListSessions
   deny: []
   disabled_tools: []         # List of completely hidden tools, e.g. [RunCommand]
 
-# MCP servers
+# MCP servers (optional)
 mcp_servers:
   github:
     type: stdio
@@ -388,6 +393,10 @@ mcp_servers:
     args: ["@modelcontextprotocol/server-github"]
     env:
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
 ---

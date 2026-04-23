@@ -341,14 +341,17 @@ model:
   api_key: "${MODEL_API_KEY}"
   name: gpt-4o
   timeout_ms: 60000
+  max_tokens: 8192           # 模型每次响应最多生成的 token 数
 
 # 辅助模型（用于上下文归档压缩，建议配置低价模型）
+# 若不配置，压缩时使用主模型
 auxiliary:
   provider: openai
   base_url: "${AUX_BASE_URL}"
   api_key: "${AUX_API_KEY}"
   name: gpt-4o-mini
   timeout_ms: 60000
+  max_tokens: 4096
 
 # 持久化记忆
 memory:
@@ -369,12 +372,14 @@ permissions:
     - ListFiles
     - SearchCode
     - ReadNotes
+    - ListTasks
+    - GetTask
     - SearchHistory
     - ListSessions
   deny: []
   disabled_tools: []         # 完全屏蔽的工具名列表，例如 [RunCommand]
 
-# MCP 服务器
+# MCP 服务器（可选）
 mcp_servers:
   github:
     type: stdio
@@ -382,6 +387,10 @@ mcp_servers:
     args: ["@modelcontextprotocol/server-github"]
     env:
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  filesystem:
+    type: stdio
+    command: npx
+    args: ["@modelcontextprotocol/server-filesystem", "/tmp"]
 ```
 
 ---
