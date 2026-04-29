@@ -16,12 +16,17 @@ memo-agent is a terminal-based AI assistant application (Hermes Agent simplified
 - **Persistent Memory** — `NOTES.md` retains context across sessions and is automatically injected into the system prompt every round; when `auto_update` is enabled, it automatically evaluates and writes at the end of each round
 - **Session Chain Archiving** — When context compression is triggered, a new session is created and linked to the old session via `parent_session_id`, ensuring history is never lost
 - **Three-Zone Context Compression** — Automatically archives the middle history for extra-long conversations, preserving the first round and the most recent ~20k tokens, so conversations are never truncated
-- **Slash Commands** — `/notes`, `/history`, `/search`, `/compact`, `/cost`, and more; use `/help` to see all available commands
+- **Slash Commands** — `/notes`, `/history`, `/search`, `/compact`, `/cost`, `/plan`, and more; use `/help` to see all available commands
+- **Plan-Execute-Reflect Loop** — `/plan <goal>` triggers a three-phase agentic loop: planning (task breakdown), execution (per-task tool loop in dependency order), and reflection (read-only review); progress is streamed live to the UI
+- **Task Persistence** — Tasks created by the agent are stored in SQLite, scoped to the session, and survive `/resume`
 - **Recipes System** — Custom `.md` template files; invoke with `/recipe-name [args]` in one click; supports `watchPaths` to auto-recommend related recipes when matching files are modified
 - **MCP Tool Extensions** — Connect to external tool servers via the Model Context Protocol
+- **Web Search** — Built-in `WebSearch` tool powered by Brave Search; configure `search.apiKey` to let the agent search the web autonomously
+- **Tool Result Cache** — Read-only tool results are cached for 30 seconds; cleared automatically when files are modified
 - **Session Persistence** — SQLite stores all history; `/resume` restores any historical session; supports full-text search
 - **Profile Isolation** — Multiple profiles with independent configurations, memory, and session data, completely isolated from each other
 - **Permission Guard** — `ask`/`auto` modes; dangerous commands (e.g., `rm -rf`) force confirmation; path safety restrictions; supports `disabledTools` to completely block specified tools
+- **RunCommand Sandbox** — When `permissions.sandbox.enabled: true`, child processes only inherit an explicit env-var allowlist, keeping API keys and secrets out of subprocess scope
 - **Rich Text UI** — Rendered with React + Ink, streaming output, status bar displays token usage and cost in real time
 - **Enhanced Input** — Cursor positioning (←/→ to move, edit mid-line), history navigation (↑/↓), queued input during streaming without loss
 
@@ -170,6 +175,7 @@ Enter the following commands during a conversation:
 | Command | Description |
 |---------|-------------|
 | `/help` | Display all available commands and recipes |
+| `/plan <goal>` | Run Plan-Execute-Reflect agentic loop for a goal |
 | `/notes [show\|clear]` | View or clear persistent notes (NOTES.md) |
 | `/history [n]` | Show the last n sessions (default 10) |
 | `/search <keyword>` | Full-text search all historical messages |
@@ -182,6 +188,27 @@ Enter the following commands during a conversation:
 | `/recipes` | List installed recipes |
 | `/mode [ask\|auto]` | Switch tool execution permission mode |
 | `/exit` | Exit memo-agent (alias: `/quit`) |
+
+---
+
+## Agentic Plan Loop (`/plan`)
+
+`/plan <goal>` triggers a three-phase autonomous loop:
+
+1. **Plan** — The agent calls `CreateTask` to break the goal into 3–7 tasks with explicit dependencies. No other actions occur in this phase.
+2. **Execute** — Tasks are executed in topological order (blocked tasks wait for their prerequisites). Each task runs a full tool-call loop with the complete tool set.
+3. **Reflect** — After all tasks finish, the agent reviews results with read-only tools and writes a summary.
+
+Progress events are streamed to the UI in real time:
+
+```
+● Planning tasks...
+● Task 1/3: Set up project structure
+✓ Set up project structure
+● Task 2/3: Implement core logic
+✓ Implement core logic
+● Reflecting on results...
+```
 
 ---
 
@@ -291,6 +318,7 @@ Trigger thresholds (adjustable in config):
 | `GetTask` | Get task details (including dependencies) | Read-only |
 | `SearchHistory` | Full-text search historical messages (across all sessions) | Read-only |
 | `ListSessions` | List historical sessions (including session chain parent-child relationships) | Read-only |
+| `WebSearch` | Search the web via Brave Search; requires `search.apiKey` in config | Read-only |
 
 ### MCP Tool Extensions
 
@@ -422,6 +450,22 @@ permissions:
     - ListSessions
   deny: []
   disabled_tools: []         # List of completely hidden tools, e.g. [RunCommand]
+  sandbox:
+    enabled: false           # When true, child processes only see allowed_env_vars
+    allowed_env_vars:
+      - PATH
+      - HOME
+      - LANG
+      - TERM
+      - USER
+      - SHELL
+      - TZ
+
+# Web search (optional — Brave Search)
+search:
+  provider: brave
+  api_key: "${BRAVE_API_KEY}"
+  max_results: 5             # Results per query (1–10)
 
 # MCP servers (optional)
 mcp_servers:
@@ -624,3 +668,4 @@ registerTool(myTool);
 - **FTS5 Security**: Search queries are automatically escaped to prevent FTS5 syntax injection
 - **Tool Masking**: Specified tools can be completely removed from the model's view via `permissions.disabled_tools`
 - **Log Sanitization**: Runtime warnings are output via UI event stream or stderr without interfering with terminal UI rendering
+- **RunCommand Sandbox**: When `permissions.sandbox.enabled: true`, spawned processes inherit only the explicitly listed env vars — API keys and other secrets are stripped from the subprocess environment

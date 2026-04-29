@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-04-29
+
+### Added
+
+- **`/plan <goal>` — Plan-Execute-Reflect (PER) agentic loop** — Breaks a goal into tasks (planning phase), executes each in dependency order (execution phase), then reflects on results with read-only tools. Progress is streamed to the UI with per-task start/done notices.
+- **Task persistence** — Tasks are now stored in SQLite (`tasks` table), scoped to the session, and survive `/resume`. Dependency ordering uses Kahn's topological sort; tasks with unresolved `blockedBy` are deferred until their predecessors complete.
+- **`WebSearch` tool** — Queries Brave Search and returns ranked titles, URLs, and snippets. Always registered; returns a clear error if `search.apiKey` is not configured. Requires `search.provider: brave` and `search.apiKey` in `config.yaml`.
+- **Tool result cache** — Read-only tool results are cached in-memory with a 30-second TTL, keyed on tool name + serialised input. The cache is cleared automatically when any file-mutating tool (`WriteFile`, `EditFile`, `WriteNotes`) succeeds.
+- **RunCommand sandbox** — When `permissions.sandbox.enabled: true`, child processes inherit only the env vars listed in `permissions.sandbox.allowedEnvVars` (default: `PATH HOME LANG TERM USER SHELL TZ`). Sensitive keys such as `MODEL_API_KEY` are never visible to spawned commands.
+
+### Changed
+
+- `ToolContext` now carries a `config: MemoAgentConfig` field — tools can read the full agent configuration without coupling to the engine.
+- `CreateTask` / `UpdateTask` / `ListTasks` / `GetTask` now read and write through SQLite instead of an in-memory Map; task state is preserved across `/resume`.
+
+### Configuration additions
+
+```yaml
+# Brave Search integration (optional)
+search:
+  provider: brave
+  api_key: "${BRAVE_API_KEY}"
+  max_results: 5
+
+permissions:
+  # ... existing fields ...
+  sandbox:
+    enabled: false              # Set true to filter child-process env
+    allowed_env_vars:
+      - PATH
+      - HOME
+      - LANG
+      - TERM
+      - USER
+      - SHELL
+      - TZ
+```
+
+---
+
 ## [0.1.0] - 2026-04-22
 
 ### Added
@@ -32,4 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - FTS5 query escaping to prevent syntax injection
 - `WriteFile` content size limit (10 MB)
 
-[0.1.0]: https://github.com/yourusername/memo-agent/releases/tag/v0.1.0
+[0.2.0]: https://github.com/lxfu1/memo-agent/releases/tag/v0.2.0
+[0.1.0]: https://github.com/lxfu1/memo-agent/releases/tag/v0.1.0
+

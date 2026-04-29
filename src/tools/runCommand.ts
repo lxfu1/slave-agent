@@ -12,6 +12,7 @@
 
 import { spawn } from "node:child_process";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
+import type { SandboxConfig } from "../types/config.js";
 import { registerTool } from "./registry.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -50,7 +51,8 @@ const runCommandTool: Tool = {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const result = await runShellCommand(command, ctx.cwd, controller.signal);
+      const env = buildProcessEnv(ctx.config.permissions.sandbox);
+      const result = await runShellCommand(command, ctx.cwd, controller.signal, env);
       clearTimeout(timer);
 
       const combined = formatOutput(result.stdout, result.stderr, result.exitCode);
@@ -82,17 +84,27 @@ interface CommandResult {
   exitCode: number;
 }
 
+function buildProcessEnv(sandbox: SandboxConfig): NodeJS.ProcessEnv {
+  if (!sandbox.enabled) return process.env;
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of sandbox.allowedEnvVars) {
+    if (process.env[key] !== undefined) result[key] = process.env[key];
+  }
+  return result;
+}
+
 function runShellCommand(
   command: string,
   cwd: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  env: NodeJS.ProcessEnv
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     // Spawn via sh -c to support pipes and shell features, but the command
     // string itself is the only argument — no interpolation by us.
     const proc = spawn("sh", ["-c", command], {
       cwd,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 

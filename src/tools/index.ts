@@ -15,3 +15,4 @@ import "./readNotes.js";
 import "./tasks.js";
 import "./searchHistory.js";
 import "./listSessions.js";
+import "./webSearch.js";

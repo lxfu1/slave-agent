@@ -6,7 +6,7 @@ import { checkPermission } from "../../permissions/guard.js";
 import { appendMessage } from "../../session/db.js";
 import type { OpenAIToolCall } from "../../types/messages.js";
 import type { MemoAgentConfig } from "../../types/config.js";
-import type { Tool, ToolContext } from "../../types/tool.js";
+import type { Tool, ToolContext, ToolResult } from "../../types/tool.js";
 import type { Recipe } from "../../recipes/recipeRegistry.js";
 import type { EngineEvent, PermissionDecision } from "../conversationEngine.js";
 
@@ -37,6 +37,9 @@ type ParseErr = { ok: false; error: string };
  * dispatch, result truncation, and message appending.
  */
 export class ToolExecutor {
+  private readonly toolCache = new Map<string, { result: ToolResult; cachedAt: number }>();
+  private static readonly CACHE_TTL_MS = 30_000;
+
   constructor(private readonly deps: ToolExecutorDeps) {}
 
   // ---------------------------------------------------------------------------
@@ -118,6 +121,18 @@ export class ToolExecutor {
 
     yield { type: "tool_call_description", id: toolCall.id, description: buildToolDescription(toolName, input) };
 
+    // Check read-only cache before executing
+    if (tool.isReadOnly()) {
+      const cacheKey = `${toolName}:${JSON.stringify(input)}`;
+      const cached = this.toolCache.get(cacheKey);
+      if (cached && Date.now() - cached.cachedAt < ToolExecutor.CACHE_TTL_MS) {
+        const content = truncate(cached.result.content, tool.maxResultChars);
+        this.appendResult(toolCall.id, toolName, content, cached.result.isError ?? false);
+        yield { type: "tool_result", name: toolName, id: toolCall.id, content, isError: cached.result.isError ?? false };
+        return;
+      }
+    }
+
     let result;
     try {
       result = await tool.call(input, this.buildContext());
@@ -131,6 +146,7 @@ export class ToolExecutor {
     const FILE_MUTATING_TOOLS = new Set(["WriteFile", "EditFile", "WriteNotes"]);
     if (FILE_MUTATING_TOOLS.has(toolName)) {
       this.deps.onInvalidateSystemPrompt();
+      this.toolCache.clear();
     }
 
     if (!result.isError && (toolName === "WriteFile" || toolName === "EditFile")) {
@@ -141,6 +157,12 @@ export class ToolExecutor {
     }
 
     const content = truncate(result.content, tool.maxResultChars);
+
+    // Cache successful read-only results
+    if (tool.isReadOnly() && !result.isError) {
+      this.toolCache.set(`${toolName}:${JSON.stringify(input)}`, { result, cachedAt: Date.now() });
+    }
+
     this.appendResult(toolCall.id, toolName, content, result.isError ?? false);
     yield { type: "tool_result", name: toolName, id: toolCall.id, content, isError: result.isError ?? false };
   }
@@ -257,6 +279,7 @@ export class ToolExecutor {
       sessionId: this.deps.getSessionId(),
       permissionMode: this.deps.getPermissionMode(),
       db: this.deps.db,
+      config: this.deps.config,
       ...(ac && { abortSignal: ac.signal }),
     };
   }

@@ -32,6 +32,13 @@ export interface ContextConfig {
   tailTokens: number;
 }
 
+export interface SandboxConfig {
+  /** When true, child processes only inherit allowedEnvVars instead of the full env */
+  enabled: boolean;
+  /** Env var names to pass through when sandbox is enabled */
+  allowedEnvVars: string[];
+}
+
 export interface PermissionsConfig {
   mode: "ask" | "auto";
   /** Tool name patterns that are always allowed without prompting */
@@ -40,6 +47,15 @@ export interface PermissionsConfig {
   deny: string[];
   /** Tool names that are completely disabled and hidden from the model */
   disabledTools: string[];
+  /** Environment isolation for RunCommand */
+  sandbox: SandboxConfig;
+}
+
+export interface SearchConfig {
+  provider: "brave";
+  apiKey: string;
+  /** Maximum results returned per search (1–10) */
+  maxResults: number;
 }
 
 export interface McpServerConfig {
@@ -60,6 +76,8 @@ export interface MemoAgentConfig {
   context: ContextConfig;
   permissions: PermissionsConfig;
   mcpServers: Record<string, McpServerConfig>;
+  /** Optional Brave Search integration */
+  search?: SearchConfig;
 }
 
 export const DEFAULT_CONFIG: MemoAgentConfig = {
@@ -86,6 +104,10 @@ export const DEFAULT_CONFIG: MemoAgentConfig = {
             "SearchHistory", "ListSessions"],
     deny: [],
     disabledTools: [],
+    sandbox: {
+      enabled: false,
+      allowedEnvVars: ["PATH", "HOME", "LANG", "TERM", "USER", "SHELL", "TZ"],
+    },
   },
   mcpServers: {},
 };

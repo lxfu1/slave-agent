@@ -7,6 +7,7 @@
  */
 
 import type Database from "better-sqlite3";
+import type { MemoAgentConfig } from "./config.js";
 
 export interface ToolInputSchema {
   type: "object";
@@ -26,6 +27,8 @@ export interface ToolContext {
   permissionMode: "ask" | "auto";
   /** SQLite database handle — used by history/session tools */
   db: Database.Database;
+  /** Full agent configuration — used by tools that depend on config (sandbox, search) */
+  config: MemoAgentConfig;
   /** Optional abort signal for long-running operations */
   abortSignal?: AbortSignal;
 }
