@@ -206,8 +206,8 @@ export class ToolExecutor {
 
     // Emit results in original call order.
     for (let i = 0; i < prepared.length; i++) {
-      const p = prepared[i]!;
-      const execResult = execResults[i]!;
+      const p = prepared[i] as (typeof prepared)[number];
+      const execResult = execResults[i] as (typeof execResults)[number];
       const toolName = p.toolCall.function.name;
       const toolId = p.toolCall.id;
 

@@ -321,7 +321,7 @@ export class ConversationEngine {
         ...(toolDefs.length > 0 && { tools: toolDefs }),
         systemPrompt,
         maxTokens: this.opts.config.model.maxTokens,
-        abortSignal: this.abortController!.signal,
+        abortSignal: (this.abortController as AbortController).signal,
       })) {
         switch (event.type) {
           case "text_delta":
@@ -697,7 +697,7 @@ Rules:
 
   private getLastTurnMessages(): ChatMessage[] {
     for (let i = this.messages.length - 1; i >= 0; i--) {
-      if (this.messages[i]!.role === "user") {
+      if ((this.messages[i] as ChatMessage).role === "user") {
         return this.messages.slice(i);
       }
     }

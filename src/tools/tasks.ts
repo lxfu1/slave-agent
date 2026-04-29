@@ -36,7 +36,7 @@ function getSessionTasks(sessionId: string): Map<string, Task> {
       if (oldest !== undefined) taskStore.delete(oldest);
     }
   }
-  return taskStore.get(sessionId)!;
+  return taskStore.get(sessionId) as Map<string, Task>;
 }
 
 /** Removes a session's tasks from memory. Called by the engine on /clear. */

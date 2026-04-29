@@ -103,7 +103,8 @@ function highlightLine(line: string, _lang: string): Array<{ text: string; color
   const numberRegex = /\b-?\d+(\.\d+)?([eE][+-]?\d+)?\b/g;
   while ((match = numberRegex.exec(line)) !== null) {
     // Skip if inside a string or comment
-    if (!tokens.some(t => match!.index >= t.start && match!.index < t.end)) {
+    const m = match;
+    if (!tokens.some(t => m.index >= t.start && m.index < t.end)) {
       tokens.push({ start: match.index, end: match.index + match[0].length, color: C.number, text: match[0] });
     }
   }
@@ -112,7 +113,8 @@ function highlightLine(line: string, _lang: string): Array<{ text: string; color
   const keywordRegex = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g;
   while ((match = keywordRegex.exec(line)) !== null) {
     const word = match[0];
-    if (KEYWORDS.has(word) && !tokens.some(t => match!.index >= t.start && match!.index < t.end)) {
+    const m = match;
+    if (KEYWORDS.has(word) && !tokens.some(t => m.index >= t.start && m.index < t.end)) {
       tokens.push({ start: match.index, end: match.index + word.length, color: C.keyword, text: word });
     }
   }
@@ -120,7 +122,8 @@ function highlightLine(line: string, _lang: string): Array<{ text: string; color
   // Function calls
   const funcRegex = /\b[a-zA-Z_][a-zA-Z0-9_]*\s*(?=\()/g;
   while ((match = funcRegex.exec(line)) !== null) {
-    if (!tokens.some(t => match!.index >= t.start && match!.index < t.end)) {
+    const m = match;
+    if (!tokens.some(t => m.index >= t.start && m.index < t.end)) {
       tokens.push({ 
         start: match.index, 
         end: match.index + match[0].trim().length, 
@@ -170,10 +173,10 @@ export function HighlightedCodeBlock({ token, maxHeight }: HighlightedCodeBlockP
   }
   
   // Limit height if specified
-  const displayLines = maxHeight && lines.length > maxHeight 
-    ? lines.slice(0, maxHeight) 
+  const displayLines = maxHeight && lines.length > maxHeight
+    ? lines.slice(0, maxHeight)
     : lines;
-  const hasMore = maxHeight && lines.length > maxHeight;
+  const hasMore = maxHeight !== undefined && lines.length > maxHeight;
   
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
@@ -185,13 +188,13 @@ export function HighlightedCodeBlock({ token, maxHeight }: HighlightedCodeBlockP
         return (
           <Box key={i} flexDirection="row">
             {parts.map((part, j) => (
-              <Text key={j} color={part.color as any}>{part.text}</Text>
+              <Text key={j} color={part.color as string}>{part.text}</Text>
             ))}
           </Box>
         );
       })}
       {hasMore && (
-        <Text color="gray" dimColor>... ({lines.length - maxHeight!} more lines)</Text>
+        <Text color="gray" dimColor>... ({lines.length - displayLines.length} more lines)</Text>
       )}
     </Box>
   );
@@ -210,10 +213,10 @@ export function PlainCodeBlock({ token, maxHeight }: HighlightedCodeBlockProps):
     lines.pop();
   }
   
-  const displayLines = maxHeight && lines.length > maxHeight 
-    ? lines.slice(0, maxHeight) 
+  const displayLines = maxHeight && lines.length > maxHeight
+    ? lines.slice(0, maxHeight)
     : lines;
-  const hasMore = maxHeight && lines.length > maxHeight;
+  const hasMore = maxHeight !== undefined && lines.length > maxHeight;
   
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
@@ -224,7 +227,7 @@ export function PlainCodeBlock({ token, maxHeight }: HighlightedCodeBlockProps):
         <Text key={i} color="yellow">{line.length > 0 ? line : ' '}</Text>
       ))}
       {hasMore && (
-        <Text color="gray" dimColor>... ({lines.length - maxHeight!} more lines)</Text>
+        <Text color="gray" dimColor>... ({lines.length - displayLines.length} more lines)</Text>
       )}
     </Box>
   );

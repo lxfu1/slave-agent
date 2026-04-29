@@ -63,7 +63,8 @@ const CONTEXT_WINDOW_SIZES: Record<string, number> = {
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 export function getContextWindowSize(modelName: string): number {
-  if (CONTEXT_WINDOW_SIZES[modelName]) return CONTEXT_WINDOW_SIZES[modelName]!;
+  const exact = CONTEXT_WINDOW_SIZES[modelName];
+  if (exact) return exact;
   // Prefix match for versioned names (e.g. "gpt-4o-2024-11-20")
   for (const [key, size] of Object.entries(CONTEXT_WINDOW_SIZES)) {
     if (modelName.startsWith(key)) return size;
@@ -201,7 +202,7 @@ export function estimateCostUsd(usage: TokenUsage, modelName: string): number {
   const costKey = Object.keys(costs)
     .sort((a, b) => b.length - a.length)
     .find(k => modelName.startsWith(k));
-  const rate = costKey ? costs[costKey]! : { input: 2.5, output: 10 };
+  const rate = (costKey ? costs[costKey] : undefined) ?? { input: 2.5, output: 10 };
 
   return (usage.promptTokens * rate.input + usage.completionTokens * rate.output) / 1_000_000;
 }

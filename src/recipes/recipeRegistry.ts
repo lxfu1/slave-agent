@@ -82,7 +82,7 @@ async function loadRecipesFromDir(dir: string, scope: "global" | "project"): Pro
 
   const recipes: Recipe[] = [];
   for (let i = 0; i < results.length; i++) {
-    const result = results[i]!;
+    const result = results[i] as (typeof results)[number];
     if (result.status === "fulfilled") {
       if (result.value) recipes.push(result.value);
     } else {
@@ -109,7 +109,7 @@ async function parseRecipeFile(
 
   let frontmatter: unknown;
   try {
-    frontmatter = yaml.load(fmRaw!);
+    frontmatter = yaml.load(fmRaw ?? "");
   } catch (err) {
     throw new Error(`Invalid YAML frontmatter: ${String(err)}`);
   }
@@ -163,7 +163,7 @@ export function expandRecipe(
   if (!match) return null;
 
   const [, name, rawArgs] = match;
-  const recipe = findRecipe(recipes, name!);
+  const recipe = findRecipe(recipes, name ?? "");
   if (!recipe) return null;
 
   const args = rawArgs?.trim() ?? "";

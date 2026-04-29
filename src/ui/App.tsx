@@ -461,7 +461,7 @@ export function App(props: AppProps): React.ReactElement {
         const hist = input.inputHistoryRef.current;
         if (nextIdx < hist.length) {
           input.historyIdxRef.current = nextIdx;
-          const item = hist[hist.length - 1 - nextIdx]!;
+          const item = hist[hist.length - 1 - nextIdx] as string;
           input.setInputFromHistory(item);
         }
       }
@@ -477,7 +477,7 @@ export function App(props: AppProps): React.ReactElement {
         if (input.historyIdxRef.current > 0) {
           input.historyIdxRef.current--;
           const hist = input.inputHistoryRef.current;
-          const item = hist[hist.length - 1 - input.historyIdxRef.current]!;
+          const item = hist[hist.length - 1 - input.historyIdxRef.current] as string;
           input.setInputFromHistory(item);
         } else if (input.historyIdxRef.current === 0) {
           input.historyIdxRef.current = -1;

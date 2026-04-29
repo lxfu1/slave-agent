@@ -122,7 +122,7 @@ function computeZoneBoundaries(
   let seenFirstUser = false;
   for (let i = 0; i < messages.length; i++) {
     headEnd = i + 1;
-    if (messages[i]!.role === "user") {
+    if (messages[i]?.role === "user") {
       if (seenFirstUser) {
         // This is the second user message — HEAD ends just before it.
         headEnd = i;
@@ -145,7 +145,7 @@ function computeZoneBoundaries(
   let tailStart = messages.length;
 
   for (let i = messages.length - 1; i >= headEnd; i--) {
-    const msgTokens = estimateTokenCount([messages[i]!], "");
+    const msgTokens = estimateTokenCount([messages[i] as ChatMessage], "");
     if (tailTokens + msgTokens > budgetForTail && messages.length - i > MIN_TAIL_MESSAGES) {
       tailStart = i + 1;
       break;
@@ -159,7 +159,7 @@ function computeZoneBoundaries(
   // TAIL. If tailStart lands mid-tool-loop (e.g. on a tool result message),
   // the API would reject the sequence: user(summary) → tool → ...
   let snapped = tailStart;
-  while (snapped < messages.length && messages[snapped]!.role !== "user") {
+  while (snapped < messages.length && (messages[snapped] as ChatMessage).role !== "user") {
     snapped++;
   }
   // If no user message found beyond tailStart, fall back to the original

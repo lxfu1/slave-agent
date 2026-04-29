@@ -51,7 +51,7 @@ export async function bootstrapMcp(
   );
 
   return results.map((result, i): McpServerEntry => {
-    const [name, config] = entries[i]!;
+    const [name, config] = entries[i] as [string, McpServerConfig];
     if (result.status === "fulfilled") {
       return result.value;
     }

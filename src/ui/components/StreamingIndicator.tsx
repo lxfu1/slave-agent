@@ -18,7 +18,7 @@ export function StreamingIndicator({
   spinnerFrame,
   isToolRunning,
 }: StreamingIndicatorProps): React.ReactElement | null {
-  const spinnerChar = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]!;
+  const spinnerChar = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] as string;
 
   if (isWaiting) {
     return (

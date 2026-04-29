@@ -106,7 +106,7 @@ export function SearchResultsPanel({
       {matchedIndices.slice(start, end).map((entryIdx, slicePos) => {
         const absPos = start + slicePos;
         const isCurrent = absPos === currentIdx;
-        const entry = entries[entryIdx]!;
+        const entry = entries[entryIdx] as (typeof entries)[number];
         const fullText = getEntryDisplayText(entry);
         const snippet = getSnippet(fullText, query);
         const kindLabel = entry.kind === "tool_call" ? entry.name : entry.kind;

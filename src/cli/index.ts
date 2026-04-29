@@ -28,7 +28,7 @@ loadDotenv({ path: path.join(process.cwd(), ".env") });
 
 import { resolveProfileDir, ensureProfileDirs, loadConfig } from "../config/loader.js";
 import { openDatabase, loadMessagesForSession, rowsToChatMessages, pruneOldSessions } from "../session/db.js";
-import { bootstrapMcp, shutdownMcp } from "../mcp/mcpBridge.js";
+import { bootstrapMcp, shutdownMcp, type McpServerEntry } from "../mcp/mcpBridge.js";
 import { loadRecipes } from "../recipes/recipeRegistry.js";
 import { createClientFromConfig } from "../model/client.js";
 import { disableTools } from "../tools/registry.js";
@@ -55,7 +55,7 @@ function parseArgs(argv: string[]): CliArgs {
   const result: CliArgs = { showVersion: false, showHelp: false };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
+    const arg = args[i] as string;
     switch (arg) {
       case "--version": case "-v":
         result.showVersion = true;
@@ -127,12 +127,12 @@ async function main(): Promise<void> {
   const cliArgs = parseArgs(process.argv);
 
   if (cliArgs.showVersion) {
-    console.log(`memo-agent v${VERSION}`);
+    process.stdout.write(`memo-agent v${VERSION}\n`);
     process.exit(0);
   }
 
   if (cliArgs.showHelp) {
-    console.log(HELP);
+    process.stdout.write(`${HELP}\n`);
     process.exit(0);
   }
 
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     })
     .catch(err => {
       process.stderr.write(`[memo-agent] MCP bootstrap error: ${String(err)}\n`);
-      return [] as import("../mcp/mcpBridge.js").McpServerEntry[];
+      return [] as McpServerEntry[];
     });
 
   // Load recipes
