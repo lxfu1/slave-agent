@@ -31,7 +31,10 @@ const writeNotesTool: Tool = {
     }
 
     const manager = createNotesManager(ctx.profileDir);
-    await manager.append(content);
+    const written = await manager.append(content);
+    if (!written) {
+      return { content: "Note skipped: content is substantially similar to existing notes." };
+    }
     return { content: `Appended note to ${manager.getPath()}` };
   },
 };

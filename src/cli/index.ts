@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   pruneOldSessions(db);
 
   // Bootstrap MCP servers in the background — don't block startup
-  void bootstrapMcp(config.mcpServers)
+  const mcpReady = bootstrapMcp(config.mcpServers)
     .then(entries => {
       const connected = entries.filter(e => e.status.type === "connected");
       const failed = entries.filter(e => e.status.type === "failed");
@@ -175,9 +175,11 @@ async function main(): Promise<void> {
         const status = e.status as { type: "failed"; error: string };
         process.stderr.write(`[memo-agent] MCP: "${e.name}" failed: ${status.error}\n`);
       }
+      return entries;
     })
     .catch(err => {
       process.stderr.write(`[memo-agent] MCP bootstrap error: ${String(err)}\n`);
+      return [] as import("../mcp/mcpBridge.js").McpServerEntry[];
     });
 
   // Load recipes
@@ -256,6 +258,7 @@ async function main(): Promise<void> {
       modelClient,
       auxiliaryClient,
       recipes,
+      mcpReady,
       // exactOptionalPropertyTypes: don't pass optional props as explicit undefined
       ...(initialMessages !== undefined && { initialMessages }),
       ...(cliArgs.permissionMode !== undefined && { permissionMode: cliArgs.permissionMode }),

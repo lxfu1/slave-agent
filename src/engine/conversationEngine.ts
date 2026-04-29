@@ -228,9 +228,6 @@ export class ConversationEngine {
         messageBody = expansion.bodyText;
         markerText = expansion.markerText;
         this.recipeAllowedTools = new Set(expansion.allowedTools);
-      } else if (this.isBuiltinCommand(trimmed)) {
-        yield* this.handleCommand(trimmed);
-        return;
       } else {
         yield* this.handleCommand(trimmed);
         return;
@@ -611,16 +608,6 @@ export class ConversationEngine {
     }
   }
 
-  private isBuiltinCommand(input: string): boolean {
-    const BUILTIN_COMMANDS = new Set([
-      "help", "notes", "history", "search", "compact",
-      "model", "cost", "clear", "resume", "profile", "recipes", "mode",
-      "exit", "quit",
-    ]);
-    const name = input.slice(1).split(" ")[0]?.toLowerCase() ?? "";
-    return BUILTIN_COMMANDS.has(name);
-  }
-
   // ---------------------------------------------------------------------------
   // NOTES.md auto-update
   // ---------------------------------------------------------------------------
@@ -628,6 +615,13 @@ export class ConversationEngine {
   private async *autoUpdateNotes(): AsyncGenerator<EngineEvent, void, unknown> {
     const recentMessages = this.getLastTurnMessages();
     if (recentMessages.length === 0) return;
+
+    // Quick skip: pure text exchange with no tool calls is rarely worth persisting.
+    const hasToolActivity = recentMessages.some(
+      m => m.role === "tool" || (m.tool_calls && m.tool_calls.length > 0)
+    );
+    const isTrivialTurn = !hasToolActivity && recentMessages.length <= 3;
+    if (isTrivialTurn) return;
 
     const client = this.opts.auxiliaryClient ?? this.opts.modelClient;
     const model = this.opts.config.auxiliary?.name ?? this.currentModel;
@@ -665,9 +659,22 @@ Rules:
     noteText = noteText.trim();
     if (!noteText || noteText.toUpperCase().startsWith("SKIP")) return;
 
+    // Security: scan LLM output before persisting — the model's output is itself
+    // an injection vector if the conversation processed attacker-controlled content.
+    const { scanForInjection } = await import("../context/promptBuilder.js");
+    if (scanForInjection(noteText)) {
+      yield {
+        type: "command_output",
+        message: "NOTES.md auto-update blocked: potential injection pattern detected in generated note.",
+        kind: "error",
+      };
+      return;
+    }
+
     try {
       const manager = createNotesManager(this.opts.profileDir);
-      await manager.append(noteText);
+      const written = await manager.append(noteText);
+      if (!written) return; // skipped as duplicate — no notification needed
       this.sysPromptManager.invalidate();
       yield { type: "notes_shown", content: `✎ Auto-saved to NOTES.md:\n\n${noteText}` };
     } catch (err) {

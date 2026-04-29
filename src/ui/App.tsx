@@ -52,6 +52,7 @@ import { useInputState } from "./useInputState.js";
 import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
 import type { PermissionRequest } from "../permissions/guard.js";
+import type { McpServerEntry } from "../mcp/mcpBridge.js";
 import { getContextWindowSize } from "../context/tokenBudget.js";
 import { watchConfig } from "../config/loader.js";
 import type { AppState } from "./types.js";
@@ -79,6 +80,8 @@ export interface AppProps {
   initialMessages?: ChatMessage[];
   permissionMode?: "ask" | "auto";
   profileName?: string;
+  /** Promise that resolves once MCP bootstrap completes. Used for status feedback. */
+  mcpReady?: Promise<McpServerEntry[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +157,37 @@ export function App(props: AppProps): React.ReactElement {
 
     process.stdin.on("data", handleRawData);
     return () => { process.stdin.off("data", handleRawData); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // MCP ready notification
+  useEffect(() => {
+    if (!props.mcpReady) return;
+    props.mcpReady.then((mcpEntries) => {
+      const connected = mcpEntries.filter(e => e.status.type === "connected");
+      const failed = mcpEntries.filter(e => e.status.type === "failed");
+      if (connected.length > 0) {
+        const toolCounts = connected
+          .map(e => {
+            const s = e.status as { type: "connected"; toolCount: number };
+            return `${e.name}(${s.toolCount})`;
+          })
+          .join(", ");
+        entries.addEntry({
+          kind: "notice",
+          content: `MCP ready: ${toolCounts}`,
+          level: "info",
+        });
+      }
+      for (const e of failed) {
+        const s = e.status as { type: "failed"; error: string };
+        entries.addEntry({
+          kind: "notice",
+          content: `MCP "${e.name}" failed: ${s.error}`,
+          level: "error",
+        });
+      }
+    }).catch(() => { /* bootstrap errors already logged to stderr */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

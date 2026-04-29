@@ -114,8 +114,23 @@ function computeZoneBoundaries(
   systemPrompt: string,
   config: ContextConfig
 ): ZoneBoundaries {
-  // HEAD: system prompt + first user + first assistant exchange (at least 2 messages)
-  const headEnd = Math.min(2, messages.length);
+  // HEAD: protect the entire first turn, including any tool call chains.
+  // Walk forward until we've seen the first user message AND all subsequent
+  // tool/assistant exchanges that belong to that turn (i.e. stop when we hit
+  // a second user message or run out of messages).
+  let headEnd = 0;
+  let seenFirstUser = false;
+  for (let i = 0; i < messages.length; i++) {
+    headEnd = i + 1;
+    if (messages[i]!.role === "user") {
+      if (seenFirstUser) {
+        // This is the second user message — HEAD ends just before it.
+        headEnd = i;
+        break;
+      }
+      seenFirstUser = true;
+    }
+  }
 
   // TAIL: walk backwards until we've accumulated tailTokens worth of messages.
   // Use Math.max(0, ...) so a large system prompt doesn't produce a negative budget.
