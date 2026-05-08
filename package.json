@@ -1,6 +1,6 @@
 {
   "name": "memo-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A terminal AI assistant with persistent memory, structured slash commands, and an extensible tool system",
   "type": "module",
   "author": "Joel Alan",
