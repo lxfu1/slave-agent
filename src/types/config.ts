@@ -32,6 +32,17 @@ export interface ContextConfig {
   tailTokens: number;
 }
 
+export interface LimitsConfig {
+  /** Maximum tool call rounds before forcing termination.
+   * Prevents infinite loops and runaway costs.
+   * @default 32 */
+  maxToolCallRounds: number;
+  /** Maximum rounds for agent planning phase (during /agent_plan commands).
+   * Task execution uses the standard maxToolCallRounds limit.
+   * @default 50 */
+  maxAgentPlanningRounds: number;
+}
+
 export interface SandboxConfig {
   /** When true, child processes only inherit allowedEnvVars instead of the full env */
   enabled: boolean;
@@ -74,6 +85,7 @@ export interface MemoAgentConfig {
   auxiliary?: AuxiliaryModelConfig;
   memory: MemoryConfig;
   context: ContextConfig;
+  limits: LimitsConfig;
   permissions: PermissionsConfig;
   mcpServers: Record<string, McpServerConfig>;
   /** Optional Brave Search integration */
@@ -97,6 +109,10 @@ export const DEFAULT_CONFIG: MemoAgentConfig = {
     warnThreshold: 0.70,
     compressThreshold: 0.85,
     tailTokens: 20_000,
+  },
+  limits: {
+    maxToolCallRounds: 32,
+    maxAgentPlanningRounds: 50,
   },
   permissions: {
     mode: "ask",

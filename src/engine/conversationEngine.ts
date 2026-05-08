@@ -45,8 +45,6 @@ import type { Recipe } from "../recipes/recipeRegistry.js";
 import { SystemPromptManager } from "./services/SystemPromptManager.js";
 import { ToolExecutor } from "./services/ToolExecutor.js";
 
-const MAX_TOOL_CALL_ROUNDS = 20;
-
 // ---------------------------------------------------------------------------
 // Event types emitted by the engine
 // ---------------------------------------------------------------------------
@@ -322,7 +320,7 @@ export class ConversationEngine {
         })
       : allToolDefs;
 
-    const maxRounds = opts?.maxRounds ?? MAX_TOOL_CALL_ROUNDS;
+    const maxRounds = opts?.maxRounds ?? this.opts.config.limits.maxToolCallRounds;
 
     while (rounds < maxRounds) {
       rounds++;
@@ -541,7 +539,7 @@ export class ConversationEngine {
     yield this.buildUsageEvent(systemPrompt);
 
     // Planning phase: model may only call CreateTask
-    yield* this.runToolCallLoop(systemPrompt, { allowedToolNames: ["CreateTask"], maxRounds: 8 });
+    yield* this.runToolCallLoop(systemPrompt, { allowedToolNames: ["CreateTask"], maxRounds: this.opts.config.limits.maxAgentPlanningRounds });
 
     // Load tasks created during planning phase
     const createdRows = dbListTasks(this.opts.db, this.sessionId);
