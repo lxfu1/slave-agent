@@ -3,17 +3,18 @@
  * Startup sequence:
  *   1. Parse argv
  *   2. Load .env
- *   3. Resolve profile directory
- *   4. Ensure profile directories exist
- *   5. Load configuration
- *   6. Open SQLite database
- *   7. Register built-in tools (side-effect imports)
- *   8. Bootstrap MCP servers (non-blocking, background)
- *   9. Load recipes
- *  10. Restore session if --resume
- *  11. Create model clients
- *  12. Render terminal UI
- *  13. On exit: graceful cleanup
+ *   3. Check for updates (non-blocking, background)
+ *   4. Resolve profile directory
+ *   5. Ensure profile directories exist
+ *   6. Load configuration
+ *   7. Open SQLite database
+ *   8. Register built-in tools (side-effect imports)
+ *   9. Bootstrap MCP servers (non-blocking, background)
+ *  10. Load recipes
+ *  11. Restore session if --resume
+ *  12. Create model clients
+ *  13. Render terminal UI
+ *  14. On exit: graceful cleanup
  */
 
 import { createRequire } from "node:module";
@@ -22,6 +23,8 @@ import { render } from "ink";
 import React from "react";
 import path from "node:path";
 import process from "node:process";
+
+import { handleUpdateCheck } from "../updater/checker.js";
 
 // Load .env before anything else reads env vars
 loadDotenv({ path: path.join(process.cwd(), ".env") });
@@ -133,6 +136,14 @@ async function main(): Promise<void> {
 
   if (cliArgs.showHelp) {
     process.stdout.write(`${HELP}\n`);
+    process.exit(0);
+  }
+
+  //────────────────────────────────────────────────────────────────────────────
+  // Check for updates and prompt user
+  //────────────────────────────────────────────────────────────────────────────
+  const shouldRestart = await handleUpdateCheck();
+  if (shouldRestart) {
     process.exit(0);
   }
 
