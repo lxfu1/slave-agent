@@ -3,14 +3,14 @@
  * Checks npm registry for newer versions and displays update notifications.
  */
 
-import { createRequire } from "node:module";
-import https from "node:https";
-import os from "node:os";
-import path from "node:path";
-import fs from "node:fs";
-import process from "node:process";
+import { createRequire } from 'node:module';
+import https from 'node:https';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
+import process from 'node:process';
 
-export type UpdateChoice = "update" | "skip" | "skip_forever" | null;
+export type UpdateChoice = 'update' | 'skip' | 'skip_forever' | null;
 
 interface VersionInfo {
   current: string;
@@ -19,61 +19,63 @@ interface VersionInfo {
 }
 
 interface NpmRegistryResponse {
-  "dist-tags": {
+  'dist-tags': {
     latest: string;
     [key: string]: string;
   };
   versions: Record<string, unknown>;
 }
 
-const PACKAGE_NAME = "memo-agent";
+const PACKAGE_NAME = 'memo-agent';
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
 
 function getCacheFile(): string {
   const home = os.homedir();
-  const dir = path.join(home, ".memo-agent");
+  const dir = path.join(home, '.memo-agent');
   // Ensure directory exists silently
   try {
     fs.mkdirSync(dir, { recursive: true });
-  } catch { /* ignore */ }
-  return path.join(dir, ".update-check");
+  } catch {
+    /* ignore */
+  }
+  return path.join(dir, '.update-check');
 }
 
 function readCurrentVersion(): string {
   const _require = createRequire(import.meta.url);
-  return (_require("../../../package.json") as { version: string }).version;
+  return (_require('../../package.json') as { version: string }).version;
 }
 
 async function fetchNpmRegistry(): Promise<NpmRegistryResponse> {
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: "registry.npmjs.org",
+      hostname: 'registry.npmjs.org',
       path: `/${PACKAGE_NAME}`,
-      method: "GET",
+      method: 'GET',
       headers: {
-        "Accept": "application/json",
-        "User-Agent": `memo-agent/${readCurrentVersion()}`,
+        Accept: 'application/json',
+        'User-Agent': `memo-agent/${readCurrentVersion()}`
       },
-      timeout: 5000,
+      timeout: 5000
     };
 
     const req = https.request(options, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
         try {
           const json = JSON.parse(data) as NpmRegistryResponse;
           resolve(json);
         } catch {
-          reject(new Error("Failed to parse npm registry response"));
+          reject(new Error('Failed to parse npm registry response'));
         }
       });
     });
 
-    req.on("error", reject);
-    req.on("timeout", () => {
+    req.on('error', reject);
+    req.on('timeout', () => {
       req.destroy();
-      reject(new Error("Request timeout"));
+      reject(new Error('Request timeout'));
     });
 
     req.end();
@@ -81,7 +83,7 @@ async function fetchNpmRegistry(): Promise<NpmRegistryResponse> {
 }
 
 function parseVersion(version: string): number[] {
-  return version.replace(/^v/, "").split(".").map(Number);
+  return version.replace(/^v/, '').split('.').map(Number);
 }
 
 function compareVersions(v1: string, v2: string): number {
@@ -114,7 +116,7 @@ function shouldCheckCache(): boolean {
 function writeCache(info: VersionInfo): void {
   try {
     const cacheFile = getCacheFile();
-    fs.writeFileSync(cacheFile, JSON.stringify(info), "utf-8");
+    fs.writeFileSync(cacheFile, JSON.stringify(info), 'utf-8');
   } catch {
     // Ignore cache write errors
   }
@@ -123,7 +125,7 @@ function writeCache(info: VersionInfo): void {
 function readCache(): VersionInfo | null {
   try {
     const cacheFile = getCacheFile();
-    const content = fs.readFileSync(cacheFile, "utf-8");
+    const content = fs.readFileSync(cacheFile, 'utf-8');
     return JSON.parse(content) as VersionInfo;
   } catch {
     return null;
@@ -135,7 +137,9 @@ function readCache(): VersionInfo | null {
  * Respects cache to avoid excessive network requests (checked once per day).
  * Returns null if check fails or is skipped.
  */
-export async function checkForUpdate(force = false): Promise<VersionInfo | null> {
+export async function checkForUpdate(
+  force = false
+): Promise<VersionInfo | null> {
   const current = readCurrentVersion();
 
   // Use cache if available and not forcing
@@ -148,7 +152,7 @@ export async function checkForUpdate(force = false): Promise<VersionInfo | null>
 
   try {
     const registry = await fetchNpmRegistry();
-    const latest = registry["dist-tags"].latest;
+    const latest = registry['dist-tags'].latest;
 
     const hasUpdate = compareVersions(latest, current) > 0;
     const info: VersionInfo = { current, latest, hasUpdate };
@@ -182,19 +186,19 @@ export function formatUpdateMessage(info: VersionInfo): string {
  * Returns true if successful.
  */
 export async function performUpdate(): Promise<boolean> {
-  const { spawn } = await import("node:child_process");
+  const { spawn } = await import('node:child_process');
 
   return new Promise((resolve) => {
-    const proc = spawn("npm", ["install", "-g", PACKAGE_NAME], {
-      stdio: "inherit",
-      shell: true,
+    const proc = spawn('npm', ['install', '-g', PACKAGE_NAME], {
+      stdio: 'inherit',
+      shell: true
     });
 
-    proc.on("close", (code) => {
+    proc.on('close', (code) => {
       resolve(code === 0);
     });
 
-    proc.on("error", () => {
+    proc.on('error', () => {
       resolve(false);
     });
   });
@@ -214,27 +218,29 @@ function readKey(): Promise<string | null> {
     const stdin = process.stdin;
     stdin.setRawMode(true);
     stdin.resume();
-    stdin.setEncoding("utf8");
+    stdin.setEncoding('utf8');
 
     const onData = (key: string) => {
-      stdin.removeListener("data", onData);
+      stdin.removeListener('data', onData);
       stdin.setRawMode(false);
       stdin.pause();
       resolve(key);
     };
 
-    stdin.once("data", onData);
+    stdin.once('data', onData);
   });
 }
 
-const SKIP_FOREVER_FILE = ".skip-update";
+const SKIP_FOREVER_FILE = '.skip-update';
 
 function getSkipForeverFile(): string {
   const home = os.homedir();
-  const dir = path.join(home, ".memo-agent");
+  const dir = path.join(home, '.memo-agent');
   try {
     fs.mkdirSync(dir, { recursive: true });
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return path.join(dir, SKIP_FOREVER_FILE);
 }
 
@@ -256,7 +262,7 @@ export function setSkipForever(skip: boolean): void {
   try {
     const file = getSkipForeverFile();
     if (skip) {
-      fs.writeFileSync(file, "", "utf-8");
+      fs.writeFileSync(file, '', 'utf-8');
     } else {
       fs.unlinkSync(file);
     }
@@ -269,10 +275,12 @@ export function setSkipForever(skip: boolean): void {
  * Prompts user for update choice and handles the interaction.
  * Returns the user's choice.
  */
-export async function promptForUpdate(info: VersionInfo): Promise<UpdateChoice> {
+export async function promptForUpdate(
+  info: VersionInfo
+): Promise<UpdateChoice> {
   // Write message to stderr to not interfere with potential stdout redirection
   process.stderr.write(formatUpdateMessage(info));
-  process.stderr.write("\nChoice: ");
+  process.stderr.write('\nChoice: ');
 
   const key = await readKey();
 
@@ -280,20 +288,20 @@ export async function promptForUpdate(info: VersionInfo): Promise<UpdateChoice> 
     return null; // Non-TTY environment
   }
 
-  process.stderr.write("\n");
+  process.stderr.write('\n');
 
   switch (key) {
-    case "1":
-      return "update";
-    case "2":
-      return "skip";
-    case "3":
+    case '1':
+      return 'update';
+    case '2':
+      return 'skip';
+    case '3':
       setSkipForever(true);
-      process.stderr.write("Future update reminders disabled.\n");
-      return "skip_forever";
+      process.stderr.write('Future update reminders disabled.\n');
+      return 'skip_forever';
     default:
       // Invalid input defaults to skip
-      return "skip";
+      return 'skip';
   }
 }
 
@@ -314,17 +322,19 @@ export async function handleUpdateCheck(force = false): Promise<boolean> {
 
   const choice = await promptForUpdate(info);
 
-  if (choice === "update") {
-    process.stderr.write("\nInstalling update...\n");
+  if (choice === 'update') {
+    process.stderr.write('\nInstalling update...\n');
     const success = await performUpdate();
 
     if (success) {
-      process.stderr.write("\n✓ Update installed successfully!\n");
-      process.stderr.write("Please restart memo-agent to use the new version.\n");
+      process.stderr.write('\n✓ Update installed successfully!\n');
+      process.stderr.write(
+        'Please restart memo-agent to use the new version.\n'
+      );
       return true; // Signal to exit
     } else {
-      process.stderr.write("\n✗ Update failed. Please try manually:\n");
-      process.stderr.write("  npm install -g memo-agent\n\n");
+      process.stderr.write('\n✗ Update failed. Please try manually:\n');
+      process.stderr.write('  npm install -g memo-agent\n\n');
       return false;
     }
   }
