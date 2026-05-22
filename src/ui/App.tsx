@@ -41,14 +41,13 @@ import { MessageEntryItem } from "./MessageList.js";
 import { StatusBar } from "./StatusBar.js";
 import { PermissionDialog, handlePermissionInput } from "./PermissionDialog.js";
 import { SearchBar, SearchResultsPanel } from "./Search.js";
-import { InputArea, StreamingIndicator } from "./components/index.js";
+import { StreamingIndicator, InputPanel } from "./components/index.js";
 import {
   useStreamingBuffer,
   useSearch,
   useAppTimers,
   useEntries,
 } from "./hooks/index.js";
-import { useInputState } from "./useInputState.js";
 import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
 import type { PermissionRequest } from "../permissions/guard.js";
@@ -57,12 +56,6 @@ import { getContextWindowSize } from "../context/tokenBudget.js";
 import { watchConfig } from "../config/loader.js";
 import type { AppState } from "./types.js";
 import type { ChatMessage } from "../types/messages.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MAX_INPUT_LINES = 20;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -91,7 +84,6 @@ export interface AppProps {
 export function App(props: AppProps): React.ReactElement {
   const { exit } = useApp();
   const streaming = useStreamingBuffer();
-  const input = useInputState();
   const search = useSearch();
   const entries = useEntries();
 
@@ -112,7 +104,7 @@ export function App(props: AppProps): React.ReactElement {
   });
 
   const lastCtrlCAt = useRef(0);
-  const { cursorVisible, spinnerFrame } = useAppTimers({ appState, isWaiting });
+  const { spinnerFrame } = useAppTimers({ appState, isWaiting });
 
   // Exit after farewell renders
   useEffect(() => {
@@ -131,32 +123,6 @@ export function App(props: AppProps): React.ReactElement {
         entries.addEntry({ kind: "notice", content: `Config reload failed: ${err.message}`, level: "error" });
       },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Shift+Enter — passive Kitty Keyboard Protocol listener
-  useEffect(() => {
-    const handleRawData = (chunk: Buffer) => {
-      if (chunk.toString() !== "\x1b[13;2u") return;
-      if (appStateRef.current !== "idle") return;
-
-      const currentLines = input.linesRef.current;
-      const lineIdx = input.currentLineIdxRef.current;
-      const pos = input.cursorPosRef.current;
-      const currentLine = currentLines[lineIdx] ?? "";
-
-      if (currentLines.length >= MAX_INPUT_LINES) return;
-      const before = currentLine.slice(0, pos);
-      const after = currentLine.slice(pos);
-      const newLines = [...currentLines];
-      newLines[lineIdx] = before;
-      newLines.splice(lineIdx + 1, 0, after);
-      input.setLines(newLines, lineIdx + 1, 0);
-      input.historyIdxRef.current = -1;
-    };
-
-    process.stdin.on("data", handleRawData);
-    return () => { process.stdin.off("data", handleRawData); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -319,13 +285,8 @@ export function App(props: AppProps): React.ReactElement {
     }
   }, [streaming, entries]);
 
-  // Submit input
-  const submitInput = useCallback(async () => {
-    const userInput = input.getInputText();
-    if (!userInput.trim()) return;
-
-    input.pushHistory(userInput);
-    input.setLines([""], 0, 0);
+  // Submit input — called by InputPanel when user presses Enter
+  const submitInput = useCallback(async (userInput: string) => {
     entries.addEntry({ kind: "user", content: userInput });
     setAppState("streaming");
     setIsWaiting(true);
@@ -352,7 +313,7 @@ export function App(props: AppProps): React.ReactElement {
       setIsWaiting(false);
       setPendingPermission(null);
     }
-  }, [engine, handleEngineEvent, streaming, input, entries]);
+  }, [engine, handleEngineEvent, streaming, entries]);
 
   // Search handlers
   const enterSearch = useCallback(() => {
@@ -366,7 +327,7 @@ export function App(props: AppProps): React.ReactElement {
     search.reset();
   }, [search]);
 
-  // Keyboard input
+  // Keyboard input — global hotkeys only (text editing is handled by InputPanel)
   useInput((char, key) => {
     // Search mode
     if (appState === "searching") {
@@ -435,127 +396,6 @@ export function App(props: AppProps): React.ReactElement {
       }
       return;
     }
-
-    // Esc: cancel multi-line input
-    if (key.escape && appState === "idle") {
-      const currentText = input.getInputText();
-      if (input.linesRef.current.length > 1) {
-        input.setLines([currentText], 0, currentText.length);
-        if (input.historyIdxRef.current !== -1) input.historyIdxRef.current = -1;
-      }
-      return;
-    }
-
-    const currentLines = input.linesRef.current;
-    const lineIdx = input.currentLineIdxRef.current;
-    const currentLine = currentLines[lineIdx] ?? "";
-    const pos = input.cursorPosRef.current;
-
-    // Cursor horizontal movement
-    if (key.leftArrow) {
-      if (pos > 0) {
-        input.updateCursorInLine(pos - 1);
-      } else if (lineIdx > 0) {
-        const prevLine = currentLines[lineIdx - 1] ?? "";
-        input.updateCurrentLine(lineIdx - 1);
-        input.updateCursorInLine(prevLine.length);
-      }
-      return;
-    }
-    if (key.rightArrow) {
-      if (pos < currentLine.length) {
-        input.updateCursorInLine(pos + 1);
-      } else if (lineIdx < currentLines.length - 1) {
-        input.updateCurrentLine(lineIdx + 1);
-        input.updateCursorInLine(0);
-      }
-      return;
-    }
-
-    // Up/Down: line navigation or history
-    if (appState === "idle" && key.upArrow) {
-      if (currentLines.length > 1 && lineIdx > 0) {
-        const prevLine = currentLines[lineIdx - 1] ?? "";
-        const newPos = Math.min(pos, prevLine.length);
-        input.updateCurrentLine(lineIdx - 1);
-        input.updateCursorInLine(newPos);
-      } else if (currentLines.length === 1) {
-        if (input.historyIdxRef.current === -1) input.savedInputRef.current = [...input.linesRef.current];
-        const nextIdx = input.historyIdxRef.current + 1;
-        const hist = input.inputHistoryRef.current;
-        if (nextIdx < hist.length) {
-          input.historyIdxRef.current = nextIdx;
-          const item = hist[hist.length - 1 - nextIdx] as string;
-          input.setInputFromHistory(item);
-        }
-      }
-      return;
-    }
-    if (appState === "idle" && key.downArrow) {
-      if (currentLines.length > 1 && lineIdx < currentLines.length - 1) {
-        const nextLine = currentLines[lineIdx + 1] ?? "";
-        const newPos = Math.min(pos, nextLine.length);
-        input.updateCurrentLine(lineIdx + 1);
-        input.updateCursorInLine(newPos);
-      } else if (currentLines.length === 1 && input.historyIdxRef.current >= 0) {
-        if (input.historyIdxRef.current > 0) {
-          input.historyIdxRef.current--;
-          const hist = input.inputHistoryRef.current;
-          const item = hist[hist.length - 1 - input.historyIdxRef.current] as string;
-          input.setInputFromHistory(item);
-        } else if (input.historyIdxRef.current === 0) {
-          input.historyIdxRef.current = -1;
-          const saved = input.savedInputRef.current;
-          input.setLines([...saved], 0, saved[0]?.length ?? 0);
-        }
-      }
-      return;
-    }
-
-    // Return: submit or insert newline
-    if (key.return) {
-      if (appState !== "idle") return;
-
-      if (currentLine.endsWith("\\")) {
-        if (currentLines.length >= MAX_INPUT_LINES) return;
-        const newLines = [...currentLines];
-        newLines[lineIdx] = currentLine.slice(0, -1);
-        newLines.splice(lineIdx + 1, 0, "");
-        input.setLines(newLines, lineIdx + 1, 0);
-        if (input.historyIdxRef.current !== -1) input.historyIdxRef.current = -1;
-      } else {
-        void submitInput();
-      }
-      return;
-    }
-
-    // Backspace / Delete
-    if (key.backspace || key.delete) {
-      if (pos > 0) {
-        const newLine = currentLine.slice(0, pos - 1) + currentLine.slice(pos);
-        const newLines = [...currentLines];
-        newLines[lineIdx] = newLine;
-        input.setLines(newLines, lineIdx, pos - 1);
-      } else if (lineIdx > 0) {
-        const prevLine = currentLines[lineIdx - 1] ?? "";
-        const newLines = [...currentLines];
-        newLines[lineIdx - 1] = prevLine + currentLine;
-        newLines.splice(lineIdx, 1);
-        input.setLines(newLines, lineIdx - 1, prevLine.length);
-      }
-      if (input.historyIdxRef.current !== -1) input.historyIdxRef.current = -1;
-      return;
-    }
-
-    // Character input
-    if (char && !key.ctrl && !key.meta && !/^\[[\d;]*[A-Za-z~]$/.test(char)) {
-      const charLen = char.length;
-      const newLine = currentLine.slice(0, pos) + char + currentLine.slice(pos);
-      const newLines = [...currentLines];
-      newLines[lineIdx] = newLine;
-      input.setLines(newLines, lineIdx, pos + charLen);
-      if (input.historyIdxRef.current !== -1) input.historyIdxRef.current = -1;
-    }
   });
 
   // Render
@@ -616,16 +456,8 @@ export function App(props: AppProps): React.ReactElement {
         </>
       )}
 
-      {/* Input area */}
-      {appState !== "awaiting_permission" && appState !== "searching" && (
-        <InputArea
-          lines={input.linesDisplay}
-          currentLineIdx={input.currentLineIdx}
-          cursorPos={input.cursorPos}
-          cursorVisible={cursorVisible}
-          appState={appState}
-        />
-      )}
+      {/* Input panel — self-contained, keystroke re-renders isolated */}
+      <InputPanel appState={appState} onSubmit={submitInput} />
 
       {/* Status bar */}
       <StatusBar

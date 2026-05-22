@@ -10,7 +10,7 @@ interface StatusBarProps {
   isStreaming: boolean;
 }
 
-export function StatusBar({ model, mode, profile, usage, isStreaming }: StatusBarProps): React.ReactElement {
+export const StatusBar = React.memo(function StatusBar({ model, mode, profile, usage, isStreaming }: StatusBarProps): React.ReactElement {
   const { totalInputTokens, totalOutputTokens, currentRatio, contextWindowSize } = usage;
 
   // Use actual API token counts when available (requires stream_options.include_usage).
@@ -60,4 +60,4 @@ export function StatusBar({ model, mode, profile, usage, isStreaming }: StatusBa
       </Box>
     </Box>
   );
-}
+});

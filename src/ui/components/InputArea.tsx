@@ -14,7 +14,7 @@ interface InputAreaProps {
   appState: AppState;
 }
 
-export function InputArea({
+export const InputArea = React.memo(function InputArea({
   lines,
   currentLineIdx,
   cursorPos,
@@ -49,7 +49,7 @@ export function InputArea({
       )}
     </Box>
   );
-}
+});
 
 function renderInputLine(
   line: string,

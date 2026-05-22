@@ -4,3 +4,4 @@
 
 export { InputArea } from "./InputArea.js";
 export { StreamingIndicator } from "./StreamingIndicator.js";
+export { InputPanel } from "./InputPanel.js";

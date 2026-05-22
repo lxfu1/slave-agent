@@ -1,6 +1,5 @@
 /**
  * App-level timers hook
- * - Cursor blink (only when idle)
  * - Spinner animation (only when waiting)
  * - Buffer display tick (during streaming)
  */
@@ -9,7 +8,6 @@ import { useEffect, useState } from "react";
 import type { AppState } from "../types.js";
 
 export interface UseAppTimersResult {
-  cursorVisible: boolean;
   spinnerFrame: number;
   bufferTick: number;
 }
@@ -20,18 +18,8 @@ interface UseAppTimersOptions {
 }
 
 export function useAppTimers({ appState, isWaiting }: UseAppTimersOptions): UseAppTimersResult {
-  const [cursorVisible, setCursorVisible] = useState(true);
   const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [, setBufferTick] = useState(0);
-
-  const isActive = appState === "streaming" || appState === "tool_running" || isWaiting || appState === "searching";
-
-  // Cursor blink — only when idle
-  useEffect(() => {
-    if (isActive) return;
-    const id = setInterval(() => setCursorVisible((v) => !v), 530);
-    return () => clearInterval(id);
-  }, [isActive]);
 
   // Spinner animation — only when waiting
   useEffect(() => {
@@ -48,7 +36,6 @@ export function useAppTimers({ appState, isWaiting }: UseAppTimersOptions): UseA
   }, [appState, isWaiting]);
 
   return {
-    cursorVisible,
     spinnerFrame,
     bufferTick: 0, // Internal state, not needed externally
   };
