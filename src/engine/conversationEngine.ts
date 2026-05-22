@@ -258,7 +258,8 @@ export class ConversationEngine {
       this.messages,
       systemPrompt,
       this.opts.config.context,
-      this.currentModel
+      this.currentModel,
+      this.opts.config.model.contextWindowTokens
     );
 
     if (snapshot.isAboveCompress) {
@@ -433,7 +434,8 @@ export class ConversationEngine {
       this.messages,
       systemPrompt,
       this.opts.config.context,
-      this.currentModel
+      this.currentModel,
+      this.opts.config.model.contextWindowTokens
     );
 
     if (finalSnapshot.isAboveWarn) {
@@ -847,7 +849,8 @@ Rules:
       this.messages,
       systemPrompt,
       this.opts.config.context,
-      this.currentModel
+      this.currentModel,
+      this.opts.config.model.contextWindowTokens
     );
     this.currentRatio = snapshot.usageRatio;
     this.currentContextWindowSize = snapshot.contextWindowSize;

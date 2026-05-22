@@ -108,7 +108,7 @@ export function App(props: AppProps): React.ReactElement {
     totalOutputTokens: 0,
     estimatedCostUsd: 0,
     currentRatio: 0,
-    contextWindowSize: getContextWindowSize(props.config.model.name),
+    contextWindowSize: getContextWindowSize(props.config.model.name, props.config.model.contextWindowTokens),
   });
 
   const lastCtrlCAt = useRef(0);

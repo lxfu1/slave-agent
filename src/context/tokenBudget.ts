@@ -36,33 +36,47 @@ const FALLBACK_CHARS_PER_TOKEN = 4;
 
 /**
  * Known model context window sizes (tokens).
- * Models not in this table default to 128 k.
+ * Models not in this table default to 200 k.
  */
 const CONTEXT_WINDOW_SIZES: Record<string, number> = {
+  // OpenAI GPT-4.1 series (1M context)
+  "gpt-4.1":           1_000_000,
+  "gpt-4.1-mini":      1_000_000,
+  "gpt-4.1-nano":      1_000_000,
+  // OpenAI o4/o3 series
+  "o4-mini":             200_000,
+  "o3":                  200_000,
+  "o3-mini":             200_000,
+  "o1":                  200_000,
+  "o1-mini":             128_000,
+  // OpenAI GPT-4o series
   "gpt-4o":              128_000,
   "gpt-4o-mini":         128_000,
   "gpt-4-turbo":         128_000,
   "gpt-4":                 8_192,
   "gpt-3.5-turbo":        16_385,
-  "o1":                  200_000,
-  "o1-mini":             128_000,
-  "o3":                  200_000,
-  "o3-mini":             200_000,
   // Claude 4
-  "claude-opus-4":       200_000,
-  "claude-sonnet-4":     200_000,
-  "claude-haiku-4":      200_000,
+  "claude-opus-4":       1_000_000,
+  "claude-sonnet-4":     1_000_000,
+  "claude-haiku-4":      1_000_000,
+  // Claude 3.7
+  "claude-3-7-sonnet": 200_000,
   // Claude 3.5
   "claude-3-5-sonnet":   200_000,
   "claude-3-5-haiku":    200_000,
   // Claude 3
   "claude-3-opus":       200_000,
   "claude-3-haiku":      200_000,
+  // Gemini (Flash 1M+)
+  "gemini-2.5-flash":  1_000_000,
+  "gemini-2.5-pro":    1_000_000,
+  "gemini-2.0-flash":  1_048_576,
 };
 
-const DEFAULT_CONTEXT_WINDOW = 128_000;
+const DEFAULT_CONTEXT_WINDOW = 200_000;
 
-export function getContextWindowSize(modelName: string): number {
+export function getContextWindowSize(modelName: string, override?: number): number {
+  if (override !== undefined && override > 0) return override;
   const exact = CONTEXT_WINDOW_SIZES[modelName];
   if (exact) return exact;
   // Prefix match for versioned names (e.g. "gpt-4o-2024-11-20")
@@ -155,8 +169,9 @@ export function computeBudgetSnapshot(
   systemPrompt: string,
   config: ContextConfig,
   modelName: string,
+  contextWindowOverride?: number,
 ): TokenBudgetSnapshot {
-  const contextWindowSize = getContextWindowSize(modelName);
+  const contextWindowSize = getContextWindowSize(modelName, contextWindowOverride);
   const estimatedTotal = estimateTokenCount(messages, systemPrompt);
   const usageRatio = estimatedTotal / contextWindowSize;
 

@@ -12,6 +12,8 @@ export interface ModelConfig {
   timeoutMs: number;
   /** Maximum tokens the model may generate per response. Controls cost on metered APIs. */
   maxTokens: number;
+  /** Override model's default context window size (tokens). Auto-detected if not specified. */
+  contextWindowTokens?: number;
 }
 
 export type AuxiliaryModelConfig = ModelConfig;
