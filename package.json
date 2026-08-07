@@ -1,6 +1,6 @@
 {
   "name": "memo-agent",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A TUI-based AI coding agent with streaming chat, tool execution, and multi-model support.",
   "type": "module",
   "author": "Joel Alan",
