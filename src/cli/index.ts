@@ -30,7 +30,7 @@ import { handleUpdateCheck } from "../updater/checker.js";
 loadDotenv({ path: path.join(process.cwd(), ".env") });
 
 import { resolveProfileDir, ensureProfileDirs, loadConfig } from "../config/loader.js";
-import { openDatabase, loadMessagesForSession, rowsToChatMessages, pruneOldSessions } from "../session/db.js";
+import { getSession, openDatabase, loadMessagesForSession, rowsToChatMessages, pruneOldSessions } from "../session/db.js";
 import { bootstrapMcp, shutdownMcp, type McpServerEntry } from "../mcp/mcpBridge.js";
 import { loadRecipes } from "../recipes/recipeRegistry.js";
 import { createClientFromConfig } from "../model/client.js";
@@ -118,7 +118,6 @@ COMMANDS (inside the agent)
 
 CONFIG
   ~/.memo-agent/config.yaml   Global configuration
-  .memo-agent/config.yaml     Project-level overrides
   .env                         Environment variable overrides
 `.trim();
 
@@ -201,12 +200,14 @@ async function main(): Promise<void> {
   const auxiliaryClient = config.auxiliary ? createClientFromConfig(config.auxiliary) : null;
 
   // Restore session if requested
-  const sessionId = cliArgs.resumeSessionId ?? crypto.randomUUID();
+  let sessionId: string = crypto.randomUUID();
   let initialMessages;
 
   if (cliArgs.resumeSessionId) {
-    const rows = loadMessagesForSession(db, cliArgs.resumeSessionId);
-    if (rows.length > 0) {
+    const session = getSession(db, cliArgs.resumeSessionId);
+    if (session) {
+      const rows = loadMessagesForSession(db, cliArgs.resumeSessionId);
+      sessionId = cliArgs.resumeSessionId;
       initialMessages = rowsToChatMessages(rows);
       process.stderr.write(`[memo-agent] Restored session ${cliArgs.resumeSessionId.slice(0, 8)} (${rows.length} messages)\n`);
     } else {
@@ -217,9 +218,14 @@ async function main(): Promise<void> {
   // Cleanup handler: close async resources before exiting.
   // Must be on SIGINT/SIGTERM (not "exit") because async work in the exit
   // event is abandoned immediately — the event loop is already shutting down.
-  async function cleanup(): Promise<void> {
-    await shutdownMcp();
-    try { db.close(); } catch { /* ignore */ }
+  let cleanupPromise: Promise<void> | null = null;
+  function cleanup(): Promise<void> {
+    if (cleanupPromise) return cleanupPromise;
+    cleanupPromise = (async () => {
+      await shutdownMcp();
+      try { db.close(); } catch { /* ignore */ }
+    })();
+    return cleanupPromise;
   }
 
   process.once("SIGTERM", () => {
@@ -277,7 +283,12 @@ async function main(): Promise<void> {
     })
   );
 
-  await waitUntilExit();
+  try {
+    await waitUntilExit();
+  } finally {
+    process.stdout.write = _origWrite as typeof process.stdout.write;
+    await cleanup();
+  }
 }
 
 main().catch(err => {

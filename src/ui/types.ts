@@ -12,6 +12,7 @@ export type AppState =
   | "idle"
   | "streaming"
   | "tool_running"
+  | "interrupting"
   | "awaiting_permission"
   | "searching";
 

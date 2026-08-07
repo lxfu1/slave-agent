@@ -22,6 +22,9 @@ export function resolveProfileDir(profileName?: string): string {
   if (!profileName || profileName === "default") {
     return base;
   }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)) {
+    throw makeError("CONFIG_PARSE_ERROR", `Invalid profile name: ${profileName}`);
+  }
   return path.join(base, "profiles", profileName);
 }
 
@@ -106,6 +109,48 @@ function validateConfig(config: MemoAgentConfig, source: string): void {
   if (!config.model.baseUrl) errors.push("model.baseUrl is required");
   if (!config.model.apiKey) errors.push("model.apiKey is required (or set MODEL_API_KEY env var)");
   if (!config.model.name) errors.push("model.name is required");
+  if (!Number.isFinite(config.model.timeoutMs) || config.model.timeoutMs <= 0) {
+    errors.push("model.timeoutMs must be a positive number");
+  }
+  if (!Number.isInteger(config.model.maxTokens) || config.model.maxTokens <= 0) {
+    errors.push("model.maxTokens must be a positive integer");
+  }
+  if (!(config.context.warnThreshold > 0 && config.context.warnThreshold < 1)) {
+    errors.push("context.warnThreshold must be between 0 and 1");
+  }
+  if (!(config.context.compressThreshold > config.context.warnThreshold && config.context.compressThreshold < 1)) {
+    errors.push("context.compressThreshold must be greater than warnThreshold and less than 1");
+  }
+  if (!Number.isInteger(config.context.tailTokens) || config.context.tailTokens <= 0) {
+    errors.push("context.tailTokens must be a positive integer");
+  }
+  if (!Number.isInteger(config.limits.maxToolCallRounds) || config.limits.maxToolCallRounds <= 0) {
+    errors.push("limits.maxToolCallRounds must be a positive integer");
+  }
+  if (!Number.isInteger(config.limits.maxAgentPlanningRounds) || config.limits.maxAgentPlanningRounds <= 0) {
+    errors.push("limits.maxAgentPlanningRounds must be a positive integer");
+  }
+  if (!Array.isArray(config.permissions.allow) || !config.permissions.allow.every(item => typeof item === "string")) {
+    errors.push("permissions.allow must be an array of strings");
+  }
+  if (!Array.isArray(config.permissions.deny) || !config.permissions.deny.every(item => typeof item === "string")) {
+    errors.push("permissions.deny must be an array of strings");
+  }
+  if (!Array.isArray(config.permissions.disabledTools) || !config.permissions.disabledTools.every(item => typeof item === "string")) {
+    errors.push("permissions.disabledTools must be an array of strings");
+  }
+  if (config.permissions.mode !== "ask" && config.permissions.mode !== "auto") {
+    errors.push("permissions.mode must be ask or auto");
+  }
+  if (typeof config.permissions.sandbox.enabled !== "boolean") {
+    errors.push("permissions.sandbox.enabled must be a boolean");
+  }
+  if (!Array.isArray(config.permissions.sandbox.allowedEnvVars) || !config.permissions.sandbox.allowedEnvVars.every(item => typeof item === "string")) {
+    errors.push("permissions.sandbox.allowedEnvVars must be an array of strings");
+  }
+  if (config.search && (!Number.isInteger(config.search.maxResults) || config.search.maxResults < 1 || config.search.maxResults > 10)) {
+    errors.push("search.maxResults must be an integer between 1 and 10");
+  }
 
   if (errors.length > 0) {
     throw makeError(
@@ -124,12 +169,29 @@ function validateConfig(config: MemoAgentConfig, source: string): void {
  * @internal Exported for unit testing.
  */
 export function convertKeysToCamelCase(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(convertKeysToCamelCase);
+  return convertConfigKeys(value, "normal");
+}
+
+type KeyConversionMode = "normal" | "mcp-server-map" | "literal-map";
+
+function convertConfigKeys(value: unknown, mode: KeyConversionMode): unknown {
+  if (Array.isArray(value)) return value.map(item => convertConfigKeys(item, "normal"));
   if (typeof value === "object" && value !== null) {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      const camelKey = k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-      result[camelKey] = convertKeysToCamelCase(v);
+      const camelKey = mode === "normal"
+        ? k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
+        : k;
+      const childMode: KeyConversionMode = camelKey === "mcpServers"
+        ? "mcp-server-map"
+        : camelKey === "env" || camelKey === "headers"
+          ? "literal-map"
+          : mode === "mcp-server-map"
+            ? "normal"
+            : mode === "literal-map"
+              ? "literal-map"
+              : "normal";
+      result[camelKey] = convertConfigKeys(v, childMode);
     }
     return result;
   }
@@ -199,12 +261,12 @@ export function watchConfig(
   onChange: (config: MemoAgentConfig) => void,
   onError?: (err: Error) => void,
 ): () => void {
-  const configPath = path.join(profileDir, CONFIG_FILE);
   let debounce: ReturnType<typeof setTimeout> | null = null;
 
   let watcher: ReturnType<typeof fsWatch> | null = null;
   try {
-    watcher = fsWatch(configPath, { persistent: false }, (eventType) => {
+    watcher = fsWatch(profileDir, { persistent: false }, (eventType, filename) => {
+      if (filename && filename.toString() !== CONFIG_FILE) return;
       if (eventType !== "change" && eventType !== "rename") return;
       if (debounce) clearTimeout(debounce);
       debounce = setTimeout(() => {

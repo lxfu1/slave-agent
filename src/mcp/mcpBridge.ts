@@ -93,13 +93,9 @@ async function connectServer(name: string, config: McpServerConfig): Promise<Mcp
   });
 
   try {
-    await Promise.race([
-      client.connect(transport),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Connection timeout after ${MCP_CONNECT_TIMEOUT_MS}ms`)), MCP_CONNECT_TIMEOUT_MS)
-      ),
-    ]);
+    await client.connect(transport, { timeout: MCP_CONNECT_TIMEOUT_MS });
   } catch (err) {
+    await Promise.allSettled([client.close(), transport.close()]);
     return {
       name,
       config,
@@ -123,7 +119,13 @@ async function connectServer(name: string, config: McpServerConfig): Promise<Mcp
       }
     }
   } catch (err) {
-    process.stderr.write(`[memo-agent] Failed to list tools from MCP server "${name}": ${String(err)}\n`);
+    await client.close().catch(() => undefined);
+    activeClients.delete(name);
+    return {
+      name,
+      config,
+      status: { type: "failed", error: `Failed to list tools: ${String(err)}` },
+    };
   }
 
   return {
@@ -162,12 +164,12 @@ function wrapMcpTool(
     isReadOnly(): boolean { return readOnly; },
     isEnabled(): boolean { return true; },
 
-    async call(input: Record<string, unknown>, _ctx: ToolContext): Promise<ToolResult> {
+    async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
       try {
         const result = await client.callTool({
           name: mcpTool.name,
           arguments: input,
-        });
+        }, undefined, ctx.abortSignal ? { signal: ctx.abortSignal } : undefined);
 
         const rawContent = result.content as unknown[];
         const content = rawContent

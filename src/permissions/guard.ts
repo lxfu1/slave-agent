@@ -3,10 +3,10 @@
  *
  * Decision order (first match wins):
  *   1. config.deny pattern → deny
- *   2. config.allow pattern → allow
- *   3. tool.isReadOnly() → allow
- *   4. safe project directory: file write within a non-core cwd → allow
- *   5. dangerous command blocklist → ask (even in auto mode)
+ *   2. dangerous command blocklist → ask (even in auto mode)
+ *   3. config.allow pattern → allow
+ *   4. tool.isReadOnly() → allow
+ *   5. safe project directory: file write within a non-core cwd → allow
  *   6. mode === "auto" → allow
  *   7. default → ask
  *
@@ -177,7 +177,20 @@ export function checkPermission(
     };
   }
 
-  // 2. Explicit allow patterns
+  // 2. Dangerous commands must always be confirmed. This intentionally
+  //    precedes allow rules so configuration cannot disable the boundary.
+  if (toolName === "RunCommand") {
+    const command = (input["command"] as string | undefined) ?? "";
+    if (isDangerousCommand(command)) {
+      return {
+        behavior: "ask",
+        reason: `Dangerous command requires confirmation: ${command.slice(0, 80)}`,
+        request: buildRequest(requestId, toolName, input, "high"),
+      };
+    }
+  }
+
+  // 3. Explicit allow patterns
   if (matchesPatterns(toolName, input, config.allow)) {
     return {
       behavior: "allow",
@@ -186,7 +199,7 @@ export function checkPermission(
     };
   }
 
-  // 3. Read-only tools are always allowed
+  // 4. Read-only tools are always allowed
   if (tool.isReadOnly()) {
     return {
       behavior: "allow",
@@ -195,7 +208,7 @@ export function checkPermission(
     };
   }
 
-  // 4. Safe project directory: auto-allow file writes within a non-core cwd.
+  // 5. Safe project directory: auto-allow file writes within a non-core cwd.
   //    When the agent is invoked from a project directory (not ~, /, /etc, …)
   //    the user implicitly trusts writes to files inside that directory.
   if (!isCoreDirectory(cwd)) {
@@ -205,18 +218,6 @@ export function checkPermission(
         behavior: "allow",
         reason: "Safe project directory",
         request: buildRequest(requestId, toolName, input, assessRisk(toolName, input)),
-      };
-    }
-  }
-
-  // 5. Dangerous commands must always be confirmed (overrides auto mode)
-  if (toolName === "RunCommand") {
-    const command = (input["command"] as string | undefined) ?? "";
-    if (isDangerousCommand(command)) {
-      return {
-        behavior: "ask",
-        reason: `Dangerous command requires confirmation: ${command.slice(0, 80)}`,
-        request: buildRequest(requestId, toolName, input, "high"),
       };
     }
   }

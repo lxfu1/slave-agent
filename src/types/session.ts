@@ -33,7 +33,7 @@ export interface SearchResultRow extends MessageRow {
   sessionTitle: string;
 }
 
-export type TaskStatus = "pending" | "in_progress" | "completed";
+export type TaskStatus = "pending" | "in_progress" | "completed" | "failed";
 
 export interface TaskRow {
   id: string;

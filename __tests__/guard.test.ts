@@ -163,6 +163,18 @@ describe("checkPermission", () => {
       );
       expect(result.behavior).toBe("allow");
     });
+
+    it("cannot be bypassed by an explicit allow rule", () => {
+      const cfg = { ...autoConfig, allow: ["RunCommand"] };
+      const result = checkPermission(
+        makeTool("RunCommand", false),
+        { command: "rm -rf /tmp/test" },
+        "auto",
+        cfg,
+        projectCwd,
+      );
+      expect(result.behavior).toBe("ask");
+    });
   });
 
   describe("step 6: auto mode", () => {

@@ -11,7 +11,6 @@ import type { MessageRow, SearchResultRow, SessionRow, TaskRow, TaskStatus } fro
 import type { ChatMessage, OpenAIToolCall } from "../types/messages.js";
 
 const DB_FILE = "sessions.db";
-const MAX_SESSIONS = 50;
 
 // ---------------------------------------------------------------------------
 // Statement cache
@@ -81,7 +80,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id               TEXT PRIMARY KEY,
   title            TEXT NOT NULL DEFAULT '',
   model            TEXT NOT NULL DEFAULT '',
-  parent_session_id TEXT REFERENCES sessions(id),
+  parent_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
   input_tokens     INTEGER NOT NULL DEFAULT 0,
   output_tokens    INTEGER NOT NULL DEFAULT 0,
   estimated_cost_usd REAL NOT NULL DEFAULT 0,
@@ -227,12 +226,19 @@ export function listSessions(
 /** Removes oldest sessions beyond the retention limit */
 export function pruneOldSessions(
   db: Database.Database,
-  maxSessions = MAX_SESSIONS
+  maxSessions?: number
 ): void {
+  // Retention is opt-in. Conversation history is user data and must not be
+  // deleted silently during normal startup.
+  if (maxSessions === undefined) return;
   db.prepare(`
     DELETE FROM sessions
     WHERE id NOT IN (
       SELECT id FROM sessions ORDER BY updated_at DESC LIMIT ?
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM sessions AS child
+      WHERE child.parent_session_id = sessions.id
     )
   `).run(maxSessions);
 }

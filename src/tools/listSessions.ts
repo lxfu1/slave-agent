@@ -30,7 +30,7 @@ const listSessionsTool: Tool = {
   isEnabled(): boolean { return true; },
 
   async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-    const limit = typeof input["limit"] === "number" ? Math.min(input["limit"], 50) : 10;
+    const limit = typeof input["limit"] === "number" ? Math.max(1, Math.min(Math.floor(input["limit"]), 50)) : 10;
     const sessions = listSessions(ctx.db, limit);
 
     if (sessions.length === 0) {

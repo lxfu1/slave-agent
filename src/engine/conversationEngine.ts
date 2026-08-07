@@ -20,6 +20,7 @@ import {
   dbGetTask,
   dbListTasks,
   dbUpdateTask,
+  getSession,
   loadMessagesForSession,
   pruneOldSessions,
   rowsToChatMessages,
@@ -31,10 +32,12 @@ import { type RecipeDescriptor, scanForInjection } from "../context/promptBuilde
 import {
   computeBudgetSnapshot,
   estimateCostUsd,
+  estimateTokenCount,
+  getContextWindowSize,
 } from "../context/tokenBudget.js";
 import { compressContext, type CompressorDeps } from "../context/compressor.js";
 import { createNotesManager } from "../memory/notesManager.js";
-import { getToolsAsOpenAIFunctions } from "../tools/registry.js";
+import { getToolsAsOpenAIFunctions, setDisabledTools } from "../tools/registry.js";
 import { type PermissionRequest } from "../permissions/guard.js";
 import { routeCommand, type CommandContext } from "./commandRouter.js";
 import { expandRecipe } from "../recipes/recipeRegistry.js";
@@ -44,6 +47,7 @@ import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
 import { SystemPromptManager } from "./services/SystemPromptManager.js";
 import { ToolExecutor } from "./services/ToolExecutor.js";
+import { createClientFromConfig } from "../model/client.js";
 
 // ---------------------------------------------------------------------------
 // Event types emitted by the engine
@@ -65,6 +69,7 @@ export type EngineEvent =
   | { type: "compressed"; summary: string; trigger: "auto" | "manual" }
   | { type: "command_output"; message: string; kind: "info" | "error" | "help" }
   | { type: "session_cleared" }
+  | { type: "session_restored"; messages: ChatMessage[]; sessionUsage: SessionUsage }
   | { type: "notes_shown"; content: string }
   | { type: "notes_cleared" }
   | { type: "permission_request"; request: PermissionRequest }
@@ -86,6 +91,12 @@ export interface SessionUsage {
 }
 
 export type PermissionDecision = "allow_once" | "allow_always" | "deny";
+
+interface ToolLoopResult {
+  completed: boolean;
+  aborted: boolean;
+  failed: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Engine state
@@ -125,6 +136,9 @@ export class ConversationEngine {
   private pendingEvents: EngineEvent[] = [];
   private recipeAllowedTools: Set<string> = new Set();
   private sessionAlwaysAllowedTools: Set<string> = new Set();
+  private notesUpdateChain: Promise<void> = Promise.resolve();
+  private notesAbortController: AbortController | null = null;
+  private shuttingDown = false;
 
   private readonly sysPromptManager = new SystemPromptManager();
   private readonly toolExecutor: ToolExecutor;
@@ -135,12 +149,19 @@ export class ConversationEngine {
     this.permissionMode = opts.permissionMode ?? opts.config.permissions.mode;
     this.currentModel = opts.config.model.name;
     this.isFirstMessage = this.messages.length === 0;
+    this.currentContextWindowSize = getContextWindowSize(
+      this.currentModel,
+      opts.config.model.contextWindowTokens,
+    );
+    this.currentRatio = this.currentContextWindowSize > 0
+      ? estimateTokenCount(this.messages, "") / this.currentContextWindowSize
+      : 0;
 
     this.toolExecutor = new ToolExecutor({
       cwd: opts.cwd,
       profileDir: opts.profileDir,
       db: opts.db,
-      config: opts.config,
+      getConfig: () => this.opts.config,
       recipes: opts.recipes,
       getSessionId: () => this.sessionId,
       getPermissionMode: () => this.permissionMode,
@@ -163,7 +184,15 @@ export class ConversationEngine {
       onInvalidateSystemPrompt: () => this.sysPromptManager.invalidate(),
     });
 
-    if (this.messages.length === 0) {
+    const existingSession = getSession(opts.db, this.sessionId);
+    if (existingSession) {
+      this.totalInputTokens = existingSession.inputTokens;
+      this.totalOutputTokens = existingSession.outputTokens;
+      this.estimatedCostUsd = existingSession.estimatedCostUsd;
+      this.flushedInputTokens = existingSession.inputTokens;
+      this.flushedOutputTokens = existingSession.outputTokens;
+      this.flushedCostUsd = existingSession.estimatedCostUsd;
+    } else {
       createSession(opts.db, {
         id: this.sessionId,
         title: "",
@@ -182,6 +211,16 @@ export class ConversationEngine {
   updateConfig(newConfig: MemoAgentConfig): void {
     this.opts.config = newConfig;
     this.currentModel = newConfig.model.name;
+    this.opts.modelClient = createClientFromConfig(newConfig.model);
+    this.opts.auxiliaryClient = newConfig.auxiliary ? createClientFromConfig(newConfig.auxiliary) : null;
+    setDisabledTools(newConfig.permissions.disabledTools);
+    this.currentContextWindowSize = getContextWindowSize(
+      this.currentModel,
+      newConfig.model.contextWindowTokens,
+    );
+    this.currentRatio = this.currentContextWindowSize > 0
+      ? estimateTokenCount(this.messages, "") / this.currentContextWindowSize
+      : 0;
     this.sysPromptManager.invalidate();
   }
 
@@ -192,6 +231,14 @@ export class ConversationEngine {
       this.pendingPermissions.delete(id);
       resolve("deny");
     }
+  }
+
+  /** Finishes background memory work before the UI and database shut down. */
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    this.interrupt();
+    this.notesAbortController?.abort();
+    await this.notesUpdateChain;
   }
 
   /** Returns a snapshot of the current engine state for UI rendering */
@@ -254,12 +301,18 @@ export class ConversationEngine {
       yield { type: "injection_warning", source };
     }
 
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: markerText ? `${markerText}\n\n${messageBody}` : messageBody,
+    };
+    const toolDefs = getToolsAsOpenAIFunctions();
     const snapshot = computeBudgetSnapshot(
-      this.messages,
+      [...this.messages, userMessage],
       systemPrompt,
       this.opts.config.context,
       this.currentModel,
-      this.opts.config.model.contextWindowTokens
+      this.opts.config.model.contextWindowTokens,
+      toolDefs,
     );
 
     if (snapshot.isAboveCompress) {
@@ -267,11 +320,6 @@ export class ConversationEngine {
     } else if (snapshot.isAboveWarn) {
       yield { type: "token_warning", ratio: snapshot.usageRatio, level: "warn" };
     }
-
-    const userMessage: ChatMessage = {
-      role: "user",
-      content: markerText ? `${markerText}\n\n${messageBody}` : messageBody,
-    };
 
     this.messages = [...this.messages, userMessage];
 
@@ -292,13 +340,16 @@ export class ConversationEngine {
     yield { type: "messages_updated", messages: this.messages };
     yield this.buildUsageEvent(systemPrompt);
 
-    yield* this.runToolCallLoop(systemPrompt);
+    const loopResult = yield* this.runToolCallLoop(systemPrompt);
 
-    if (this.opts.config.memory.autoUpdate) {
+    if (loopResult.completed && this.opts.config.memory.autoUpdate && !this.shuttingDown) {
       // Fire-and-forget: runs after the response is delivered to the user.
       // Any events it produces are queued in pendingEvents and yielded at the
       // start of the next submitMessage call, so the UI isn't blocked.
-      void this.autoUpdateNotes();
+      const recentMessages = this.getLastTurnMessages();
+      this.notesUpdateChain = this.notesUpdateChain
+        .then(() => this.autoUpdateNotes(recentMessages))
+        .catch(() => undefined);
     }
   }
 
@@ -309,9 +360,13 @@ export class ConversationEngine {
   private async *runToolCallLoop(
     systemPrompt: string,
     opts?: { allowedToolNames?: string[]; maxRounds?: number }
-  ): AsyncGenerator<EngineEvent, void, unknown> {
+  ): AsyncGenerator<EngineEvent, ToolLoopResult, unknown> {
     this.abortController = new AbortController();
     let rounds = 0;
+    let completed = false;
+    let aborted = false;
+    let failed = false;
+    let needsAnotherRound = false;
 
     const allToolDefs = getToolsAsOpenAIFunctions();
     const toolDefs = opts?.allowedToolNames
@@ -323,7 +378,7 @@ export class ConversationEngine {
 
     const maxRounds = opts?.maxRounds ?? this.opts.config.limits.maxToolCallRounds;
 
-    while (rounds < maxRounds) {
+    outer: while (rounds < maxRounds) {
       rounds++;
 
       let streamDone = false;
@@ -371,20 +426,27 @@ export class ConversationEngine {
 
           case "error":
             yield { type: "error", message: event.error.message, code: event.error.code };
-            return;
+            failed = true;
+            break outer;
         }
       }
 
-      if (!streamDone) break;
+      if (!streamDone) {
+        failed = true;
+        break;
+      }
 
       const turnCost = estimateCostUsd(turnUsage, this.currentModel);
       this.totalInputTokens += turnUsage.promptTokens;
       this.totalOutputTokens += turnUsage.completionTokens;
       this.estimatedCostUsd += turnCost;
 
+      const persistedContent = stopReason === "aborted" && assistantContent
+        ? `${assistantContent} [interrupted]`
+        : assistantContent;
       const assistantMessage: ChatMessage = {
         role: "assistant",
-        content: assistantContent || null,
+        content: persistedContent || null,
         ...(accumulatedToolCalls.length > 0 && { tool_calls: accumulatedToolCalls }),
       };
 
@@ -393,7 +455,7 @@ export class ConversationEngine {
       appendMessage(this.opts.db, {
         sessionId: this.sessionId,
         role: "assistant",
-        content: assistantContent || null,
+        content: persistedContent || null,
         toolCallsJson: accumulatedToolCalls.length > 0 ? JSON.stringify(accumulatedToolCalls) : null,
         toolCallId: null,
         tokenCount: turnUsage.completionTokens,
@@ -402,20 +464,43 @@ export class ConversationEngine {
       yield { type: "messages_updated", messages: this.messages };
       yield this.buildUsageEvent(systemPrompt);
 
+      if (stopReason === "aborted") {
+        aborted = true;
+        break;
+      }
+
+      if (stopReason === "length") {
+        yield {
+          type: "error",
+          message: "The model response reached its output-token limit and may be incomplete.",
+          code: "OUTPUT_TRUNCATED",
+        };
+        failed = true;
+        break;
+      }
+
       if (stopReason === "tool_calls" && accumulatedToolCalls.length > 0) {
         yield* this.toolExecutor.executeAll(accumulatedToolCalls);
+        if (this.abortController.signal.aborted) {
+          aborted = true;
+          break;
+        }
+        needsAnotherRound = true;
         continue;
       }
 
+      completed = true;
+      needsAnotherRound = false;
       break;
     }
 
-    if (rounds >= maxRounds) {
+    if (needsAnotherRound && rounds >= maxRounds && !aborted && !failed) {
       yield {
         type: "error",
         message: `Reached maximum tool call rounds (${maxRounds}). Use /clear to reset context.`,
         code: "MAX_ROUNDS_EXCEEDED",
       };
+      failed = true;
     }
 
     const newInput = this.totalInputTokens - this.flushedInputTokens;
@@ -435,7 +520,8 @@ export class ConversationEngine {
       systemPrompt,
       this.opts.config.context,
       this.currentModel,
-      this.opts.config.model.contextWindowTokens
+      this.opts.config.model.contextWindowTokens,
+      toolDefs,
     );
 
     if (finalSnapshot.isAboveWarn) {
@@ -445,6 +531,9 @@ export class ConversationEngine {
         level: finalSnapshot.isAboveCompress ? "critical" : "warn",
       };
     }
+
+    this.abortController = null;
+    return { completed: completed && !failed && !aborted, aborted, failed };
   }
 
   // ---------------------------------------------------------------------------
@@ -470,10 +559,25 @@ export class ConversationEngine {
       if (result.summary) {
         const archivedSessionId = this.sessionId;
         const newSessionId = crypto.randomUUID();
+        const archivedSession = getSession(this.opts.db, archivedSessionId);
+        const compressionModel = this.opts.config.auxiliary?.name ?? this.currentModel;
+        const compressionCost = estimateCostUsd(result.usage, compressionModel);
+        this.totalInputTokens += result.usage.promptTokens;
+        this.totalOutputTokens += result.usage.completionTokens;
+        this.estimatedCostUsd += compressionCost;
+        if (result.usage.totalTokens > 0) {
+          updateSessionStats(
+            this.opts.db,
+            archivedSessionId,
+            result.usage.promptTokens,
+            result.usage.completionTokens,
+            compressionCost,
+          );
+        }
 
         createSession(this.opts.db, {
           id: newSessionId,
-          title: `[compressed] ${new Date().toISOString().slice(0, 10)}`,
+          title: `[compressed] ${(archivedSession?.title || new Date().toISOString().slice(0, 10)).slice(0, 100)}`,
           model: this.currentModel,
           parentSessionId: archivedSessionId,
           inputTokens: this.totalInputTokens,
@@ -519,6 +623,7 @@ export class ConversationEngine {
   ): AsyncGenerator<EngineEvent, void, unknown> {
     // === PHASE 1: PLAN ===
     yield { type: "agent_plan_start" };
+    const existingTaskIds = new Set(dbListTasks(this.opts.db, this.sessionId).map(task => task.id));
 
     const planningContent = buildPlanningPrompt(goal);
     const planningMsg: ChatMessage = { role: "user", content: planningContent };
@@ -540,11 +645,23 @@ export class ConversationEngine {
     yield { type: "messages_updated", messages: this.messages };
     yield this.buildUsageEvent(systemPrompt);
 
-    // Planning phase: model may only call CreateTask
-    yield* this.runToolCallLoop(systemPrompt, { allowedToolNames: ["CreateTask"], maxRounds: this.opts.config.limits.maxAgentPlanningRounds });
+    // Planning phase: task creation and dependency updates only.
+    const planningResult = yield* this.runToolCallLoop(systemPrompt, {
+      allowedToolNames: ["CreateTask", "UpdateTask", "ListTasks"],
+      maxRounds: this.opts.config.limits.maxAgentPlanningRounds,
+    });
+    if (!planningResult.completed) {
+      yield {
+        type: "command_output",
+        message: planningResult.aborted ? "Planning interrupted." : "Planning failed before tasks were ready.",
+        kind: "error",
+      };
+      return;
+    }
 
     // Load tasks created during planning phase
-    const createdRows = dbListTasks(this.opts.db, this.sessionId);
+    const createdRows = dbListTasks(this.opts.db, this.sessionId)
+      .filter(task => !existingTaskIds.has(task.id));
     const createdTasks: Task[] = createdRows.map(r => ({
       id: r.id,
       subject: r.subject,
@@ -563,7 +680,17 @@ export class ConversationEngine {
     }
 
     // === PHASE 2: EXECUTE ===
-    const orderedTasks = resolveExecutionOrder(createdTasks);
+    let orderedTasks: Task[];
+    try {
+      orderedTasks = resolveExecutionOrder(createdTasks);
+    } catch (err) {
+      yield {
+        type: "command_output",
+        message: err instanceof Error ? err.message : String(err),
+        kind: "error",
+      };
+      return;
+    }
     const total = orderedTasks.length;
 
     for (let i = 0; i < orderedTasks.length; i++) {
@@ -588,10 +715,32 @@ export class ConversationEngine {
       yield { type: "messages_updated", messages: this.messages };
       yield this.buildUsageEvent(systemPrompt);
 
-      yield* this.runToolCallLoop(systemPrompt);
+      const taskResult = yield* this.runToolCallLoop(systemPrompt);
+
+      if (!taskResult.completed) {
+        dbUpdateTask(this.opts.db, this.sessionId, task.id, { status: "failed" });
+        yield { type: "agent_task_done", taskId: task.id, subject: task.subject, status: "failed" };
+        yield {
+          type: "command_output",
+          message: taskResult.aborted
+            ? `Task interrupted: ${task.subject}`
+            : `Task failed: ${task.subject}. Remaining dependent tasks were not executed.`,
+          kind: "error",
+        };
+        return;
+      }
 
       // Mark completed if model didn't do so explicitly
       const freshRow = dbGetTask(this.opts.db, this.sessionId, task.id);
+      if (freshRow?.status === "failed") {
+        yield { type: "agent_task_done", taskId: task.id, subject: task.subject, status: "failed" };
+        yield {
+          type: "command_output",
+          message: `Task reported failure: ${task.subject}. Remaining dependent tasks were not executed.`,
+          kind: "error",
+        };
+        return;
+      }
       if (freshRow?.status !== "completed") {
         dbUpdateTask(this.opts.db, this.sessionId, task.id, { status: "completed" });
       }
@@ -656,6 +805,18 @@ export class ConversationEngine {
         this.messages = [];
         this.isFirstMessage = true;
         this.sessionId = crypto.randomUUID();
+        this.totalInputTokens = 0;
+        this.totalOutputTokens = 0;
+        this.estimatedCostUsd = 0;
+        this.flushedInputTokens = 0;
+        this.flushedOutputTokens = 0;
+        this.flushedCostUsd = 0;
+        this.currentRatio = 0;
+        this.currentContextWindowSize = getContextWindowSize(
+          this.currentModel,
+          this.opts.config.model.contextWindowTokens,
+        );
+        this.sessionAlwaysAllowedTools.clear();
         this.sysPromptManager.invalidate();
         createSession(this.opts.db, {
           id: this.sessionId,
@@ -667,11 +828,13 @@ export class ConversationEngine {
           estimatedCostUsd: 0,
         });
         yield { type: "session_cleared" };
+        yield { type: "usage_updated", sessionUsage: this.getUsage() };
         break;
 
       case "compact": {
         const systemPrompt = await this.sysPromptManager.get(this.buildPromptOptions());
         yield* this.performCompression(systemPrompt, "manual", result.focus);
+        yield this.buildUsageEvent(systemPrompt);
         break;
       }
 
@@ -705,8 +868,8 @@ export class ConversationEngine {
           yield { type: "command_output", message: "Usage: /resume <session-id>", kind: "error" };
           break;
         }
-        const rows = loadMessagesForSession(this.opts.db, targetId);
-        if (rows.length === 0) {
+        const session = getSession(this.opts.db, targetId);
+        if (!session) {
           yield {
             type: "command_output",
             message: `Session ${targetId} not found. Use /history to list available sessions.`,
@@ -714,11 +877,22 @@ export class ConversationEngine {
           };
           break;
         }
+        const rows = loadMessagesForSession(this.opts.db, targetId);
         this.messages = rowsToChatMessages(rows);
         this.sessionId = targetId;
-        this.isFirstMessage = false;
+        this.isFirstMessage = rows.length === 0;
+        this.totalInputTokens = session.inputTokens;
+        this.totalOutputTokens = session.outputTokens;
+        this.estimatedCostUsd = session.estimatedCostUsd;
+        this.flushedInputTokens = session.inputTokens;
+        this.flushedOutputTokens = session.outputTokens;
+        this.flushedCostUsd = session.estimatedCostUsd;
+        this.sessionAlwaysAllowedTools.clear();
         this.sysPromptManager.invalidate();
-        yield { type: "messages_updated", messages: this.messages };
+        const restoredPrompt = await this.sysPromptManager.get(this.buildPromptOptions());
+        const usageEvent = this.buildUsageEvent(restoredPrompt);
+        const sessionUsage = usageEvent.type === "usage_updated" ? usageEvent.sessionUsage : this.getUsage();
+        yield { type: "session_restored", messages: this.messages, sessionUsage };
         yield {
           type: "command_output",
           message: `Restored session ${targetId.slice(0, 8)} (${rows.length} messages)`,
@@ -762,9 +936,8 @@ export class ConversationEngine {
   // NOTES.md auto-update (fire-and-forget)
   // ---------------------------------------------------------------------------
 
-  private async autoUpdateNotes(): Promise<void> {
-    const recentMessages = this.getLastTurnMessages();
-    if (recentMessages.length === 0) return;
+  private async autoUpdateNotes(recentMessages: ChatMessage[]): Promise<void> {
+    if (this.shuttingDown || recentMessages.length === 0) return;
 
     // Quick skip: pure text exchange with no tool calls is rarely worth persisting.
     const hasToolActivity = recentMessages.some(
@@ -772,6 +945,9 @@ export class ConversationEngine {
     );
     const isTrivialTurn = !hasToolActivity && recentMessages.length <= 3;
     if (isTrivialTurn) return;
+
+    const abortController = new AbortController();
+    this.notesAbortController = abortController;
 
     const client = this.opts.auxiliaryClient ?? this.opts.modelClient;
     const model = this.opts.config.auxiliary?.name ?? this.currentModel;
@@ -796,16 +972,24 @@ Rules:
 - Write in past tense. No preamble — just the note content, or SKIP.`;
 
     let noteText = "";
-    for await (const event of streamChat(client, {
-      model,
-      messages: [{ role: "user", content: `Conversation turn:\n\n${turnText}` }],
-      systemPrompt,
-      maxTokens: 256,
-    })) {
-      if (event.type === "text_delta") noteText += event.delta;
-      if (event.type === "error") return;
+    try {
+      for await (const event of streamChat(client, {
+        model,
+        messages: [{ role: "user", content: `Conversation turn:\n\n${turnText}` }],
+        systemPrompt,
+        maxTokens: 256,
+        abortSignal: abortController.signal,
+      })) {
+        if (event.type === "text_delta") noteText += event.delta;
+        if (event.type === "error") return;
+      }
+    } finally {
+      if (this.notesAbortController === abortController) {
+        this.notesAbortController = null;
+      }
     }
 
+    if (this.shuttingDown || abortController.signal.aborted) return;
     noteText = noteText.trim();
     if (!noteText || noteText.toUpperCase().startsWith("SKIP")) return;
 
@@ -845,12 +1029,14 @@ Rules:
   }
 
   private buildUsageEvent(systemPrompt: string): EngineEvent {
+    const toolDefs = getToolsAsOpenAIFunctions();
     const snapshot = computeBudgetSnapshot(
       this.messages,
       systemPrompt,
       this.opts.config.context,
       this.currentModel,
-      this.opts.config.model.contextWindowTokens
+      this.opts.config.model.contextWindowTokens,
+      toolDefs,
     );
     this.currentRatio = snapshot.usageRatio;
     this.currentContextWindowSize = snapshot.contextWindowSize;
@@ -916,8 +1102,8 @@ function buildPlanningPrompt(goal: string): string {
 Goal: ${goal}
 
 Before doing anything else, break this goal into concrete, actionable tasks using CreateTask.
-Create 3-7 tasks maximum. Use the blockedBy field (task IDs) to express dependencies.
-Only call CreateTask during this planning phase. Do not execute any other actions yet.
+Create 3-7 tasks maximum. Use blockedBy and blocks with task IDs to express dependencies.
+During planning, only use CreateTask, UpdateTask, and ListTasks. Do not execute implementation actions yet.
 </agent-planning>`;
 }
 
@@ -946,9 +1132,8 @@ function resolveExecutionOrder(tasks: Task[]): Task[] {
 
   for (const task of tasks) {
     for (const depId of task.blockedBy) {
-      if (taskMap.has(depId)) {
-        inDegree.set(task.id, (inDegree.get(task.id) ?? 0) + 1);
-      }
+      if (!taskMap.has(depId)) throw new Error(`Task #${task.id} depends on unknown task #${depId}`);
+      inDegree.set(task.id, (inDegree.get(task.id) ?? 0) + 1);
     }
   }
 
@@ -970,11 +1155,9 @@ function resolveExecutionOrder(tasks: Task[]): Task[] {
     }
   }
 
-  // Append tasks with circular dependencies (fallback: run them anyway)
-  for (const task of tasks) {
-    if (!ordered.some(o => o.id === task.id)) {
-      ordered.push(task);
-    }
+  if (ordered.length !== tasks.length) {
+    const unresolved = tasks.filter(task => !ordered.some(item => item.id === task.id));
+    throw new Error(`Task plan contains circular dependencies: ${unresolved.map(task => `#${task.id}`).join(", ")}`);
   }
 
   return ordered;

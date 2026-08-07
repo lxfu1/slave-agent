@@ -1,17 +1,17 @@
 {
   "name": "memo-agent",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "A TUI-based AI coding agent with streaming chat, tool execution, and multi-model support.",
   "type": "module",
   "author": "Joel Alan",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/memo-agent"
+    "url": "https://github.com/lxfu1/memo-agent"
   },
-  "homepage": "https://github.com/yourusername/memo-agent#readme",
+  "homepage": "https://github.com/lxfu1/memo-agent#readme",
   "bugs": {
-    "url": "https://github.com/yourusername/memo-agent/issues"
+    "url": "https://github.com/lxfu1/memo-agent/issues"
   },
   "keywords": [
     "ai",
@@ -45,16 +45,16 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm run build"
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.9.0",
-    "better-sqlite3": "^9.6.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^12.11.1",
     "dotenv": "^16.4.5",
     "glob": "^11.0.0",
     "gpt-tokenizer": "^3.4.0",
     "ink": "^5.0.1",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.1",
     "marked": "^18.0.2",
     "minimatch": "^10.0.0",
     "openai": "^4.77.0",

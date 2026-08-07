@@ -16,14 +16,18 @@ export interface UseEntriesResult {
   setToolDescription: (toolId: string, description: string) => void;
   commitEntries: () => void;
   clearEntries: () => void;
+  replaceEntries: (entries: MessageEntryData[]) => void;
 }
 
-export function useEntries(): UseEntriesResult {
-  const [entries, setEntries] = useState<MessageEntry[]>([]);
-  const entriesRef = useRef<MessageEntry[]>([]);
-  const [committedCount, setCommittedCount] = useState(0);
+export function useEntries(initialEntries: MessageEntryData[] = []): UseEntriesResult {
+  const initialWithIds = useRef<MessageEntry[]>(
+    initialEntries.map((entry, index) => ({ ...entry, id: String(index + 1) })),
+  );
+  const [entries, setEntries] = useState<MessageEntry[]>(initialWithIds.current);
+  const entriesRef = useRef<MessageEntry[]>(initialWithIds.current);
+  const [committedCount, setCommittedCount] = useState(initialWithIds.current.length);
   const [clearCount, setClearCount] = useState(0);
-  const entryIdCounter = useRef(0);
+  const entryIdCounter = useRef(initialWithIds.current.length);
 
   const addEntry = useCallback((entry: MessageEntryData) => {
     entryIdCounter.current += 1;
@@ -66,6 +70,17 @@ export function useEntries(): UseEntriesResult {
     setCommittedCount(0);
   }, [commitEntries]);
 
+  const replaceEntries = useCallback((newEntries: MessageEntryData[]) => {
+    const withIds = newEntries.map(entry => {
+      entryIdCounter.current += 1;
+      return { ...entry, id: String(entryIdCounter.current) } as MessageEntry;
+    });
+    entriesRef.current = withIds;
+    setEntries(withIds);
+    setCommittedCount(withIds.length);
+    setClearCount(count => count + 1);
+  }, []);
+
   return {
     entries,
     entriesRef,
@@ -76,5 +91,6 @@ export function useEntries(): UseEntriesResult {
     setToolDescription,
     commitEntries,
     clearEntries,
+    replaceEntries,
   };
 }

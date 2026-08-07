@@ -39,10 +39,10 @@ const webSearchTool: Tool = {
     }
 
     const query = input["query"] as string;
-    const count = Math.min(
-      typeof input["count"] === "number" ? input["count"] : searchCfg.maxResults,
+    const count = Math.max(1, Math.min(
+      typeof input["count"] === "number" ? Math.floor(input["count"]) : searchCfg.maxResults,
       10
-    );
+    ));
     const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
 
     let response: Response;

@@ -661,7 +661,7 @@ registerTool(myTool);
 
 ## Security Notes
 
-- **Path Restriction**: `ReadFile`, `WriteFile`, `EditFile` only allow operating on files within the current working directory or profile directory; out-of-bounds access returns an error
+- **Path Restriction**: file reads, writes, edits, listings, and searches resolve canonical paths and stay within the current working directory or profile directory, including through symlinks; out-of-bounds access returns an error
 - **Safe Project Directory**: When working in non-core directories (project directories), file write operations are auto-approved; the home directory itself, system paths, and sensitive hidden directories still require confirmation (see [Safe Project Directory Auto-Approval](#safe-project-directory-auto-approval))
 - **Injection Scanning**: `NOTES.md`, `PROFILE.md`, and recipe files are automatically scanned for prompt injection signatures before injection; if detected, injection is skipped and a warning is displayed in the UI
 - **Command Interception**: `RunCommand` dangerous command blacklist forces confirmation in any mode

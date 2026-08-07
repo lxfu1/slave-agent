@@ -11,6 +11,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import type { SandboxConfig } from "../types/config.js";
 import { registerTool } from "./registry.js";
@@ -43,30 +44,37 @@ const runCommandTool: Tool = {
   async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const command = input["command"] as string;
     const timeoutMs = Math.min(
-      typeof input["timeout_ms"] === "number" ? input["timeout_ms"] : DEFAULT_TIMEOUT_MS,
+      Math.max(1, typeof input["timeout_ms"] === "number" ? input["timeout_ms"] : DEFAULT_TIMEOUT_MS),
       120_000
     );
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const abortFromContext = () => controller.abort();
+    if (ctx.abortSignal?.aborted) controller.abort();
+    else ctx.abortSignal?.addEventListener("abort", abortFromContext, { once: true });
 
     try {
       const env = buildProcessEnv(ctx.config.permissions.sandbox);
       const result = await runShellCommand(command, ctx.cwd, controller.signal, env);
-      clearTimeout(timer);
 
       const combined = formatOutput(result.stdout, result.stderr, result.exitCode);
       const truncated = combined.length > MAX_OUTPUT_CHARS
         ? combined.slice(0, MAX_OUTPUT_CHARS) + "\n...(truncated)"
-        : combined;
+        : combined + (result.outputTruncated ? "\n...(output capture truncated)" : "");
 
       const isError = result.exitCode !== 0;
       return { content: truncated, isError };
     } catch (err) {
-      clearTimeout(timer);
       if (err instanceof Error && err.name === "AbortError") {
         return {
-          content: `Command timed out after ${timeoutMs}ms: ${command}`,
+          content: timedOut
+            ? `Command timed out after ${timeoutMs}ms: ${command}`
+            : `Command interrupted: ${command}`,
           isError: true,
         };
       }
@@ -74,6 +82,9 @@ const runCommandTool: Tool = {
         content: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
         isError: true,
       };
+    } finally {
+      clearTimeout(timer);
+      ctx.abortSignal?.removeEventListener("abort", abortFromContext);
     }
   },
 };
@@ -82,6 +93,7 @@ interface CommandResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  outputTruncated: boolean;
 }
 
 function buildProcessEnv(sandbox: SandboxConfig): NodeJS.ProcessEnv {
@@ -108,20 +120,43 @@ function runShellCommand(
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    let stdout = "";
+    let stderr = "";
+    let capturedChars = 0;
+    let outputTruncated = false;
     let settled = false;
 
-    proc.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    const capture = (chunk: Buffer, decoder: StringDecoder, target: "stdout" | "stderr") => {
+      if (capturedChars >= MAX_OUTPUT_CHARS) {
+        outputTruncated = true;
+        return;
+      }
+      const decoded = decoder.write(chunk);
+      const remaining = MAX_OUTPUT_CHARS - capturedChars;
+      const slice = decoded.slice(0, remaining);
+      if (target === "stdout") stdout += slice;
+      else stderr += slice;
+      capturedChars += slice.length;
+      if (slice.length < decoded.length) outputTruncated = true;
+    };
+
+    proc.stdout.on("data", (chunk: Buffer) => capture(chunk, stdoutDecoder, "stdout"));
+    proc.stderr.on("data", (chunk: Buffer) => capture(chunk, stderrDecoder, "stderr"));
 
     proc.on("close", (code) => {
       if (!settled) {
         settled = true;
+        if (capturedChars < MAX_OUTPUT_CHARS) {
+          stdout += stdoutDecoder.end();
+          stderr += stderrDecoder.end();
+        }
         resolve({
-          stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-          stderr: Buffer.concat(stderrChunks).toString("utf-8"),
+          stdout,
+          stderr,
           exitCode: code ?? 1,
+          outputTruncated,
         });
       }
     });

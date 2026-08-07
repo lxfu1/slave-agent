@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import { registerTool } from "./registry.js";
-import { isPathSafe } from "./pathUtils.js";
+import { resolveSafePath } from "./pathUtils.js";
 
 const MAX_CONTENT_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -28,9 +28,9 @@ const writeFileTool: Tool = {
   async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const inputPath = input["path"] as string;
     const content = input["content"] as string;
-    const filePath = path.isAbsolute(inputPath) ? inputPath : path.resolve(ctx.cwd, inputPath);
+    const filePath = await resolveSafePath(inputPath, ctx.cwd, [ctx.cwd, ctx.profileDir]);
 
-    if (!isPathSafe(filePath, ctx.cwd, ctx.profileDir)) {
+    if (!filePath) {
       return {
         content: `Security error: path "${inputPath}" is outside the working directory`,
         isError: true,

@@ -9,7 +9,7 @@ Thank you for your interest in contributing! This document explains how to get s
 **Requirements:** Node.js ≥ 20, npm ≥ 10
 
 ```bash
-git clone https://github.com/yourusername/memo-agent
+git clone https://github.com/lxfu1/memo-agent
 cd memo-agent
 npm install
 cp .env.example .env   # fill in your API key
@@ -135,5 +135,5 @@ PRs that break existing tests or type-check will not be merged.
 
 ## Reporting Issues
 
-Use the [GitHub issue tracker](https://github.com/yourusername/memo-agent/issues).
+Use the [GitHub issue tracker](https://github.com/lxfu1/memo-agent/issues).
 For security vulnerabilities, see [SECURITY.md](SECURITY.md).

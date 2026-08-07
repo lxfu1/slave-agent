@@ -4,13 +4,18 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | ✅        |
+| 0.2.x   | ✅        |
+| < 0.2   | ❌        |
 
 ## Reporting a Vulnerability
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, email **security@yourdomain.com** with:
+Instead, use the repository's private vulnerability reporting page:
+
+**https://github.com/lxfu1/memo-agent/security/advisories/new**
+
+Include:
 
 - A description of the vulnerability
 - Steps to reproduce
@@ -24,7 +29,7 @@ We will acknowledge your report within **48 hours** and aim to release a fix wit
 memo-agent runs locally and connects to your configured LLM API. Key security considerations:
 
 - **Prompt injection** — user-editable files (`NOTES.md`, `PROFILE.md`, recipes) are scanned for injection patterns before being injected into the system prompt
-- **Path traversal** — file tools (`ReadFile`, `WriteFile`, `EditFile`) are restricted to `cwd` and the profile directory
+- **Path traversal** — file tools resolve canonical paths and restrict reads, writes, edits, listings, and searches to `cwd` and the profile directory, including through symlinks
 - **Dangerous commands** — `RunCommand` maintains a blocklist of destructive shell commands that always require confirmation regardless of permission mode
 - **API keys** — never committed; loaded from `.env` or environment variables only
 - **Tool scope** — tools can be disabled via `permissions.disabledTools` in `config.yaml`

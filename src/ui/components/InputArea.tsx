@@ -24,10 +24,48 @@ export const InputArea = React.memo(function InputArea({
   const notIdle = appState !== "idle";
   const isMultiLine = lines.length > 1;
 
+  // Limit visible lines to prevent overflow; ensure cursor is visible
+  const MAX_VISIBLE = 10;
+  let startIdx = 0;
+  let endIdx = lines.length;
+  if (lines.length > MAX_VISIBLE) {
+    // Keep cursor visible: show lines around cursor
+    const half = Math.floor(MAX_VISIBLE / 2);
+    if (currentLineIdx < half) {
+      endIdx = MAX_VISIBLE;
+    } else if (currentLineIdx >= lines.length - half) {
+      startIdx = lines.length - MAX_VISIBLE;
+      endIdx = lines.length;
+    } else {
+      startIdx = currentLineIdx - half + 1;
+      endIdx = startIdx + MAX_VISIBLE;
+    }
+  }
+  const visibleLines = lines.slice(startIdx, endIdx);
+  const visibleCurrentIdx = currentLineIdx - startIdx;
+
   return (
     <Box flexDirection="column" paddingX={0}>
-      {lines.map((line, idx) =>
-        renderInputLine(line, idx, idx === currentLineIdx, isMultiLine, cursorPos, cursorVisible, notIdle)
+      {startIdx > 0 && (
+        <Box paddingX={2}>
+          <Text color="gray" dimColor>↑ {startIdx} lines above</Text>
+        </Box>
+      )}
+      {visibleLines.map((line, idx) =>
+        renderInputLine(
+          line,
+          startIdx + idx,
+          idx === visibleCurrentIdx,
+          isMultiLine,
+          idx === visibleCurrentIdx ? cursorPos : 0,
+          cursorVisible,
+          notIdle
+        )
+      )}
+      {endIdx < lines.length && (
+        <Box paddingX={2}>
+          <Text color="gray" dimColor>↓ {lines.length - endIdx} lines below</Text>
+        </Box>
       )}
 
       {/* Queued/hint indicator */}
@@ -68,8 +106,9 @@ function renderInputLine(
 
   if (isCurrentLine) {
     before = line.slice(0, cursorPos);
-    at = line[cursorPos];
-    after = line.slice(cursorPos + 1);
+    const nextBoundary = nextGraphemeBoundary(line, cursorPos);
+    at = cursorPos < line.length ? line.slice(cursorPos, nextBoundary) : undefined;
+    after = line.slice(nextBoundary);
   } else {
     before = line;
     at = undefined;
@@ -99,4 +138,11 @@ function renderInputLine(
       <Text color={notIdle ? "gray" : "white"}>{after}</Text>
     </Box>
   );
+}
+
+function nextGraphemeBoundary(text: string, position: number): number {
+  for (const segment of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)) {
+    if (segment.index > position) return segment.index;
+  }
+  return text.length;
 }

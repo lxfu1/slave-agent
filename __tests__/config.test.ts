@@ -66,4 +66,25 @@ describe("convertKeysToCamelCase", () => {
       permissions: { disabledTools: ["RunCommand"] },
     });
   });
+
+  it("preserves MCP server names and literal env/header keys", () => {
+    const input = {
+      mcp_servers: {
+        "my_server": {
+          type: "stdio",
+          env: { "lower_case_key": "value" },
+          headers: { "x_api_key": "secret" },
+        },
+      },
+    };
+    expect(convertKeysToCamelCase(input)).toEqual({
+      mcpServers: {
+        "my_server": {
+          type: "stdio",
+          env: { "lower_case_key": "value" },
+          headers: { "x_api_key": "secret" },
+        },
+      },
+    });
+  });
 });

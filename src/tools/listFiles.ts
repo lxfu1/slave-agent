@@ -2,12 +2,13 @@ import { glob } from "glob";
 import path from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import { registerTool } from "./registry.js";
+import { resolveSafePath } from "./pathUtils.js";
 
 const listFilesTool: Tool = {
   name: "ListFiles",
   description:
-    "Lists files matching a glob pattern. Results are sorted by modification time (most recent first). " +
-    "Respects .gitignore by default.",
+    "Lists files matching a glob pattern in alphabetical order. " +
+    "Excludes node_modules and .git by default.",
   inputSchema: {
     type: "object",
     properties: {
@@ -34,8 +35,13 @@ const listFilesTool: Tool = {
 
   async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const pattern = input["pattern"] as string;
-    const searchDir = input["cwd"] ? path.resolve(ctx.cwd, input["cwd"] as string) : ctx.cwd;
+    const requestedDir = input["cwd"] ? path.resolve(ctx.cwd, input["cwd"] as string) : ctx.cwd;
+    const searchDir = await resolveSafePath(requestedDir, ctx.cwd, [ctx.cwd]);
     const ignoreGitignore = input["ignore_gitignore"] === true;
+
+    if (!searchDir) {
+      return { content: "Security error: search directory is outside the working directory", isError: true };
+    }
 
     try {
       const files = await glob(pattern, {

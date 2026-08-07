@@ -94,9 +94,14 @@ function highlightLine(line: string, _lang: string): Array<{ text: string; color
   
   // Strings
   const stringRegex = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`/g;
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = stringRegex.exec(line)) !== null) {
-    tokens.push({ start: match.index, end: match.index + match[0].length, color: C.string, text: match[0] });
+    const start = match.index;
+    const text = match[0];
+    const end = start + text.length;
+    if (!tokens.some(token => rangesOverlap(start, end, token.start, token.end))) {
+      tokens.push({ start, end, color: C.string, text });
+    }
   }
   
   // Numbers
@@ -139,6 +144,7 @@ function highlightLine(line: string, _lang: string): Array<{ text: string; color
   // Build result with non-highlighted parts
   let currentPos = 0;
   for (const token of tokens) {
+    if (token.start < currentPos) continue;
     if (token.start > currentPos) {
       result.push({ text: line.slice(currentPos, token.start) });
     }
@@ -152,6 +158,10 @@ function highlightLine(line: string, _lang: string): Array<{ text: string; color
   }
   
   return result.length > 0 ? result : [{ text: line || ' ' }];
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
+  return startA < endB && endA > startB;
 }
 
 // ---------------------------------------------------------------------------
