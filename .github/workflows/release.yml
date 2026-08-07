@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish npm package and GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out tagged revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Read and validate release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          expected_tag="v${package_version}"
+
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${package_version}. Expected ${expected_tag}."
+            exit 1
+          fi
+
+          prerelease=false
+          npm_tag=latest
+          if [[ "${package_version}" == *-* ]]; then
+            prerelease=true
+            npm_tag=next
+          fi
+
+          {
+            echo "name=${package_name}"
+            echo "version=${package_version}"
+            echo "prerelease=${prerelease}"
+            echo "npm_tag=${npm_tag}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Verify tag commit belongs to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not point to a commit contained in origin/main."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run publish gate
+        run: npm run prepublishOnly
+
+      - name: Inspect package contents
+        run: npm pack --dry-run
+
+      - name: Check npm publication state
+        id: npm_state
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          package="${{ steps.release.outputs.name }}@${{ steps.release.outputs.version }}"
+          if npm view "${package}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "published=true" >> "${GITHUB_OUTPUT}"
+            echo "${package} is already published; skipping npm publish."
+          else
+            echo "published=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Publish to npm
+        if: steps.npm_state.outputs.published != 'true'
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "::error::Repository secret NPM_TOKEN is required to publish a new version."
+            exit 1
+          fi
+          npm publish \
+            --access public \
+            --provenance \
+            --tag "${{ steps.release.outputs.npm_tag }}" \
+            --ignore-scripts
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "GitHub release ${GITHUB_REF_NAME} already exists; skipping creation."
+            exit 0
+          fi
+
+          args=(
+            "${GITHUB_REF_NAME}"
+            --repo "${GITHUB_REPOSITORY}"
+            --verify-tag
+            --generate-notes
+            --title "${GITHUB_REF_NAME}"
+          )
+          if [[ "${{ steps.release.outputs.prerelease }}" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

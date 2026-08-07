@@ -133,6 +133,28 @@ PRs that break existing tests or type-check will not be merged.
 
 ---
 
+## Publishing a Release
+
+Releases are triggered by pushing a version tag from a local checkout. Before the first release, add an npm granular access token with publish permission as the repository Actions secret `NPM_TOKEN`.
+
+1. Update the version in `package.json` and lock files, then update `CHANGELOG.md`.
+2. Merge the release commit into `main` and update the local branch.
+3. Create an annotated tag that exactly matches the package version.
+4. Push the tag to GitHub.
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag -a v0.2.1 -m "Release v0.2.1"
+git push origin v0.2.1
+```
+
+The release workflow verifies that the tag matches `package.json` and points to a commit contained in `origin/main`. It then runs the publish gate, publishes to npm with provenance, and creates a GitHub Release. Versions containing a prerelease suffix, such as `0.3.0-beta.1`, are published with the npm `next` dist-tag.
+
+Do not run `npm publish` locally. If a workflow needs to be retried, rerun it from GitHub Actions; already published npm versions and existing GitHub Releases are skipped safely.
+
+---
+
 ## Reporting Issues
 
 Use the [GitHub issue tracker](https://github.com/lxfu1/memo-agent/issues).

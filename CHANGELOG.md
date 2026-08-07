@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a tag-triggered GitHub Actions workflow for validated npm publishing with provenance and automatic GitHub Releases.
+
 ### Fixed
 
 - Hardened terminal rendering against untrusted control sequences, including OSC clipboard commands.

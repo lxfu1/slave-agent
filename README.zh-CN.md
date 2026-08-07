@@ -618,6 +618,19 @@ npm run build
 npm start
 ```
 
+### 发布版本
+
+版本发布由 `.github/workflows/release.yml` 自动执行。先在仓库 Actions Secrets 中配置 `NPM_TOKEN`，在 `main` 更新包版本和变更日志，然后从本地推送与版本完全一致的 annotated tag：
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag -a v0.2.1 -m "Release v0.2.1"
+git push origin v0.2.1
+```
+
+工作流会校验 tag、运行完整发布门禁、携带 provenance 发布 npm 包，并创建对应的 GitHub Release。详细说明见 [CONTRIBUTING.md](CONTRIBUTING.md#publishing-a-release)。
+
 ### 添加自定义工具
 
 1. 在 `src/tools/` 下新建 `myTool.ts`

@@ -624,6 +624,19 @@ npm run build
 npm start
 ```
 
+### Publishing a Release
+
+Publishing is automated by `.github/workflows/release.yml`. Configure the repository Actions secret `NPM_TOKEN`, update the package version and changelog on `main`, then push a matching annotated tag:
+
+```bash
+git switch main
+git pull --ff-only origin main
+git tag -a v0.2.1 -m "Release v0.2.1"
+git push origin v0.2.1
+```
+
+The workflow validates the tag, runs the complete publish gate, publishes the npm package with provenance, and creates the corresponding GitHub Release. See [CONTRIBUTING.md](CONTRIBUTING.md#publishing-a-release) for details.
+
 ### Adding Custom Tools
 
 1. Create `myTool.ts` under `src/tools/`
