@@ -20,6 +20,7 @@ import { Box, Text } from 'ink';
 import { marked } from 'marked';
 import type { Token, Tokens } from 'marked';
 import { HighlightedCodeBlock } from './CodeHighlighter.js';
+import { sanitizeTerminalText } from './sanitizeTerminalText.js';
 
 // ---------------------------------------------------------------------------
 // ANSI helpers — used only for inline formatting within paragraphs
@@ -170,14 +171,23 @@ function TableBlock({ token }: { token: Tokens.Table }): React.ReactElement {
     renderInline(cell.tokens, cell.text);
 
   const headerCells = token.header.map(renderCell);
-  const divider = headerCells.map(h => '─'.repeat(Math.max(3, h.length))).join('─┼─');
+  const rows = token.rows.map(row => row.map(renderCell));
+  const widths = headerCells.map((header, column) => Math.max(
+    3,
+    visibleLength(header),
+    ...rows.map(row => visibleLength(row[column] ?? '')),
+  ));
+  const formatRow = (cells: string[]) => cells
+    .map((cell, column) => cell + ' '.repeat(Math.max(0, (widths[column] ?? 0) - visibleLength(cell))))
+    .join(' │ ');
+  const divider = widths.map(width => '─'.repeat(width)).join('─┼─');
 
   return (
     <Box flexDirection="column">
-      <Text bold>{headerCells.join(' │ ')}</Text>
+      <Text bold>{formatRow(headerCells)}</Text>
       <Text color="gray">{divider}</Text>
-      {token.rows.map((row, i) => (
-        <Text key={i}>{row.map(renderCell).join(' │ ')}</Text>
+      {rows.map((row, i) => (
+        <Text key={i}>{formatRow(row)}</Text>
       ))}
     </Box>
   );
@@ -218,7 +228,8 @@ function BlockToken({ token }: { token: Token }): React.ReactElement {
 export function MarkdownRenderer({ content }: { content: string }): React.ReactElement {
   // Memoise parsing — lexing is fast but we avoid re-running on re-renders
   // triggered by unrelated state changes (e.g. spinner ticks).
-  const tokens = useMemo(() => marked.lexer(content), [content]);
+  const safeContent = sanitizeTerminalText(content);
+  const tokens = useMemo(() => marked.lexer(safeContent), [safeContent]);
 
   return (
     <Box flexDirection="column" gap={0}>
@@ -227,4 +238,8 @@ export function MarkdownRenderer({ content }: { content: string }): React.ReactE
       ))}
     </Box>
   );
+}
+
+function visibleLength(text: string): number {
+  return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').length;
 }

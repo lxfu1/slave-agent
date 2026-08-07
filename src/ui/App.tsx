@@ -52,10 +52,10 @@ import type { MemoAgentConfig } from "../types/config.js";
 import type { Recipe } from "../recipes/recipeRegistry.js";
 import type { PermissionRequest } from "../permissions/guard.js";
 import type { McpServerEntry } from "../mcp/mcpBridge.js";
-import { getContextWindowSize } from "../context/tokenBudget.js";
 import { watchConfig } from "../config/loader.js";
-import type { AppState } from "./types.js";
+import type { AppState, MessageEntryData } from "./types.js";
 import type { ChatMessage } from "../types/messages.js";
+import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -77,6 +77,25 @@ export interface AppProps {
   mcpReady?: Promise<McpServerEntry[]>;
 }
 
+function messagesToEntryData(messages: ChatMessage[]): MessageEntryData[] {
+  const result: MessageEntryData[] = [];
+  for (const message of messages) {
+    const content = sanitizeTerminalText(message.content ?? "");
+    if (message.role === "user" && content) {
+      result.push({ kind: "user", content });
+    } else if (message.role === "assistant" && content) {
+      result.push({ kind: "assistant", content });
+    } else if (message.role === "tool" && content) {
+      result.push({
+        kind: "notice",
+        content: `${message.name ?? "tool"}: ${content}`,
+        level: content.startsWith("Error:") ? "error" : "info",
+      });
+    }
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
@@ -85,7 +104,7 @@ export function App(props: AppProps): React.ReactElement {
   const { exit } = useApp();
   const streaming = useStreamingBuffer();
   const search = useSearch();
-  const entries = useEntries();
+  const entries = useEntries(messagesToEntryData(props.initialMessages ?? []));
 
   const [engine] = useState(() => new ConversationEngine(props));
   const [appState, setAppState] = useState<AppState>("idle");
@@ -95,21 +114,15 @@ export function App(props: AppProps): React.ReactElement {
   const [isWaiting, setIsWaiting] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [pendingExit, setPendingExit] = useState(false);
-  const [usage, setUsage] = useState<SessionUsage>({
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    estimatedCostUsd: 0,
-    currentRatio: 0,
-    contextWindowSize: getContextWindowSize(props.config.model.name, props.config.model.contextWindowTokens),
-  });
+  const [usage, setUsage] = useState<SessionUsage>(() => engine.getUsage());
 
   const lastCtrlCAt = useRef(0);
   const { spinnerFrame } = useAppTimers({ appState, isWaiting });
 
   // Exit after farewell renders
   useEffect(() => {
-    if (pendingExit) exit();
-  }, [pendingExit, exit]);
+    if (pendingExit) void engine.shutdown().finally(exit);
+  }, [pendingExit, exit, engine]);
 
   // Config hot-reload
   useEffect(() => {
@@ -117,7 +130,12 @@ export function App(props: AppProps): React.ReactElement {
       props.profileDir,
       (newConfig) => {
         engine.updateConfig(newConfig);
-        entries.addEntry({ kind: "notice", content: "Config reloaded.", level: "info" });
+        setUsage(engine.getUsage());
+        entries.addEntry({
+          kind: "notice",
+          content: "Config reloaded. MCP server changes require a restart.",
+          level: "info",
+        });
       },
       (err) => {
         entries.addEntry({ kind: "notice", content: `Config reload failed: ${err.message}`, level: "error" });
@@ -177,7 +195,7 @@ export function App(props: AppProps): React.ReactElement {
 
       case "tool_result":
         entries.updateToolEntry(event.id, event.isError ? "error" : "done", event.content);
-        setAppState("streaming");
+        if (appStateRef.current !== "interrupting") setAppState("streaming");
         break;
 
       case "messages_updated": {
@@ -222,6 +240,12 @@ export function App(props: AppProps): React.ReactElement {
         entries.clearEntries();
         streaming.clear();
         entries.addEntry({ kind: "notice", content: "Session cleared. Memory is preserved.", level: "info" });
+        break;
+
+      case "session_restored":
+        streaming.clear();
+        entries.replaceEntries(messagesToEntryData(event.messages));
+        setUsage(event.sessionUsage);
         break;
 
       case "notes_shown":
@@ -348,7 +372,7 @@ export function App(props: AppProps): React.ReactElement {
         return;
       }
       if (key.backspace || key.delete) {
-        const newQuery = search.queryRef.current.slice(0, -1);
+        const newQuery = removeLastGrapheme(search.queryRef.current);
         search.setQuery(newQuery);
         search.performSearch(entries.entriesRef.current, newQuery);
         return;
@@ -376,12 +400,13 @@ export function App(props: AppProps): React.ReactElement {
         if (partial) entries.addEntry({ kind: "assistant", content: partial + " [interrupted]" });
         engine.interrupt();
         entries.commitEntries();
-        setAppState("idle");
+        setAppState("interrupting");
         setIsWaiting(false);
         return;
       }
       if (now - lastCtrlCAt.current < 2_000) {
-        exit();
+        entries.addEntry({ kind: "notice", content: "Goodbye! Session saved.", level: "success" });
+        setPendingExit(true);
         return;
       }
       lastCtrlCAt.current = now;
@@ -421,7 +446,7 @@ export function App(props: AppProps): React.ReactElement {
 
         {currentBuffer && (
           <Box paddingX={1}>
-            <Text color="white">{currentBuffer}</Text>
+            <Text color="white">{sanitizeTerminalText(currentBuffer)}</Text>
             <Text color="cyan">▊</Text>
           </Box>
         )}
@@ -469,4 +494,10 @@ export function App(props: AppProps): React.ReactElement {
       />
     </Box>
   );
+}
+
+function removeLastGrapheme(text: string): string {
+  const segments = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text));
+  const last = segments.at(-1);
+  return last ? text.slice(0, last.index) : "";
 }

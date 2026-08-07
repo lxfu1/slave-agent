@@ -7,6 +7,7 @@
  * well as project files can do so with a single call.
  */
 
+import fs from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -23,4 +24,47 @@ export function isPathSafe(resolvedPath: string, ...roots: string[]): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Resolves a path through the filesystem and verifies that its canonical target
+ * remains inside one of the allowed roots. For paths that do not exist yet, the
+ * nearest existing ancestor is resolved so symlinked parent directories cannot
+ * escape the boundary.
+ */
+export async function resolveSafePath(
+  inputPath: string,
+  cwd: string,
+  roots: string[],
+): Promise<string | null> {
+  const candidate = path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(cwd, inputPath);
+  const canonicalRoots = await Promise.all(
+    roots.map(async root => {
+      try {
+        return await fs.realpath(root);
+      } catch {
+        return path.resolve(root);
+      }
+    }),
+  );
+
+  const canonicalCandidate = await resolveThroughExistingAncestor(candidate);
+  return isPathSafe(canonicalCandidate, ...canonicalRoots) ? canonicalCandidate : null;
+}
+
+async function resolveThroughExistingAncestor(candidate: string): Promise<string> {
+  let current = candidate;
+  const missingSegments: string[] = [];
+
+  while (true) {
+    try {
+      const existing = await fs.realpath(current);
+      return path.join(existing, ...missingSegments.reverse());
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return candidate;
+      missingSegments.push(path.basename(current));
+      current = parent;
+    }
+  }
 }

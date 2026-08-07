@@ -73,7 +73,7 @@ const CONTEXT_WINDOW_SIZES: Record<string, number> = {
   "gemini-2.0-flash":  1_048_576,
 };
 
-const DEFAULT_CONTEXT_WINDOW = 200_000;
+const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 export function getContextWindowSize(modelName: string, override?: number): number {
   if (override !== undefined && override > 0) return override;
@@ -170,9 +170,14 @@ export function computeBudgetSnapshot(
   config: ContextConfig,
   modelName: string,
   contextWindowOverride?: number,
+  toolDefinitions: Record<string, unknown>[] = [],
 ): TokenBudgetSnapshot {
   const contextWindowSize = getContextWindowSize(modelName, contextWindowOverride);
-  const estimatedTotal = estimateTokenCount(messages, systemPrompt);
+  const toolDefinitionTokens = toolDefinitions.reduce(
+    (total, definition) => total + MESSAGE_OVERHEAD_TOKENS + estimateStringTokens(JSON.stringify(definition)),
+    0,
+  );
+  const estimatedTotal = estimateTokenCount(messages, systemPrompt) + toolDefinitionTokens;
   const usageRatio = estimatedTotal / contextWindowSize;
 
   return {

@@ -10,7 +10,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import { registerTool } from "./registry.js";
-import { isPathSafe } from "./pathUtils.js";
+import { resolveSafePath } from "./pathUtils.js";
 
 const editFileTool: Tool = {
   name: "EditFile",
@@ -42,13 +42,17 @@ const editFileTool: Tool = {
     const oldString = input["old_string"] as string;
     const newString = input["new_string"] as string;
     const replaceAll = input["replace_all"] === true;
-    const filePath = path.isAbsolute(inputPath) ? inputPath : path.resolve(ctx.cwd, inputPath);
+    const filePath = await resolveSafePath(inputPath, ctx.cwd, [ctx.cwd, ctx.profileDir]);
 
-    if (!isPathSafe(filePath, ctx.cwd, ctx.profileDir)) {
+    if (!filePath) {
       return {
         content: `Security error: path "${inputPath}" is outside the working directory`,
         isError: true,
       };
+    }
+
+    if (oldString.length === 0) {
+      return { content: "old_string must not be empty", isError: true };
     }
 
     let original: string;

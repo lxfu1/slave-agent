@@ -62,6 +62,14 @@ export async function* streamChat(
       { ...(opts.abortSignal && { signal: opts.abortSignal }) }
     );
   } catch (err) {
+    if (isAbortError(err)) {
+      yield {
+        type: "message_done",
+        stopReason: "aborted",
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      };
+      return;
+    }
     yield {
       type: "error",
       error: makeError("API_ERROR", formatApiError(err), err),
@@ -69,8 +77,17 @@ export async function* streamChat(
     return;
   }
 
+  let finishReason: string | null = null;
+  const tokenUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
   try {
     for await (const chunk of stream) {
+      if (chunk.usage) {
+        tokenUsage.promptTokens = chunk.usage.prompt_tokens;
+        tokenUsage.completionTokens = chunk.usage.completion_tokens;
+        tokenUsage.totalTokens = chunk.usage.total_tokens;
+      }
+
       const choice = chunk.choices[0];
       if (!choice) continue;
 
@@ -113,38 +130,7 @@ export async function* streamChat(
         }
       }
 
-      // Finish reason signals end of this choice
-      const finishReason = choice.finish_reason;
-      if (finishReason === "tool_calls" || finishReason === "stop" || finishReason === "length") {
-        // Emit tool_call_done for all accumulated calls in index order
-        for (const callId of [...toolCallOrder.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([, id]) => id)) {
-          const buf = toolCallBuffers.get(callId);
-          if (buf) {
-            yield {
-              type: "tool_call_done",
-              id: callId,
-              name: buf.name,
-              arguments: buf.argsBuffer,
-            };
-          }
-        }
-
-        const usage = chunk.usage;
-        const tokenUsage: TokenUsage = {
-          promptTokens: usage?.prompt_tokens ?? 0,
-          completionTokens: usage?.completion_tokens ?? 0,
-          totalTokens: usage?.total_tokens ?? 0,
-        };
-
-        yield {
-          type: "message_done",
-          stopReason: finishReason,
-          usage: tokenUsage,
-        };
-        return;
-      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
     }
   } catch (err) {
     if (isAbortError(err)) {
@@ -152,15 +138,50 @@ export async function* streamChat(
       yield {
         type: "message_done",
         stopReason: "aborted",
-        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        usage: tokenUsage,
       };
       return;
     }
+
+    // Some OpenAI-compatible gateways close the HTTP body immediately after
+    // sending the final finish_reason chunk instead of terminating the SSE
+    // stream cleanly. The response is already semantically complete in that
+    // case, so do not surface a false API error. A close before finish_reason
+    // remains fatal because the content may be truncated.
+    if (!finishReason || !isPrematureCloseError(err)) {
+      yield {
+        type: "error",
+        error: makeError("API_ERROR", formatApiError(err), err),
+      };
+      return;
+    }
+  }
+
+  if (!finishReason) {
     yield {
       type: "error",
-      error: makeError("API_ERROR", formatApiError(err), err),
+      error: makeError("API_ERROR", "Streaming response ended without a finish reason"),
     };
+    return;
   }
+
+  // Usage commonly arrives in a final chunk with an empty choices array, so
+  // tool completion and message_done are emitted only after the stream ends.
+  for (const callId of [...toolCallOrder.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, id]) => id)) {
+    const buf = toolCallBuffers.get(callId);
+    if (buf) {
+      yield {
+        type: "tool_call_done",
+        id: callId,
+        name: buf.name,
+        arguments: buf.argsBuffer,
+      };
+    }
+  }
+
+  yield { type: "message_done", stopReason: finishReason, usage: tokenUsage };
 }
 
 /** Builds the messages array, prepending a system message when provided */
@@ -205,4 +226,10 @@ function formatApiError(err: unknown): string {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError";
+}
+
+function isPrematureCloseError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as NodeJS.ErrnoException).code;
+  return code === "ERR_STREAM_PREMATURE_CLOSE" || /premature close/i.test(err.message);
 }

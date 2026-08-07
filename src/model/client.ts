@@ -29,6 +29,6 @@ export function createClient(opts: ClientOptions): OpenAI {
     baseURL: opts.baseUrl,
     apiKey: opts.apiKey,
     timeout: opts.timeoutMs ?? 60_000,
-    maxRetries: 0, // Retry logic is handled at the engine level
+    maxRetries: 2,
   });
 }

@@ -1,8 +1,7 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import { registerTool } from "./registry.js";
-import { isPathSafe } from "./pathUtils.js";
+import { resolveSafePath } from "./pathUtils.js";
 
 const MAX_RESULT_CHARS = 100_000;
 
@@ -27,11 +26,11 @@ const readFileTool: Tool = {
 
   async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const inputPath = input["path"] as string;
-    const filePath = resolveFilePath(inputPath, ctx.cwd);
+    const filePath = await resolveSafePath(inputPath, ctx.cwd, [ctx.cwd, ctx.profileDir]);
     const offset = typeof input["offset"] === "number" ? input["offset"] : 1;
     const limit = typeof input["limit"] === "number" ? input["limit"] : undefined;
 
-    if (!isPathSafe(filePath, ctx.cwd, ctx.profileDir)) {
+    if (!filePath) {
       return {
         content: `Security error: path "${inputPath}" is outside the working directory`,
         isError: true,
@@ -64,10 +63,6 @@ const readFileTool: Tool = {
     return { content: truncated };
   },
 };
-
-function resolveFilePath(inputPath: string, cwd: string): string {
-  return path.isAbsolute(inputPath) ? inputPath : path.resolve(cwd, inputPath);
-}
 
 function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

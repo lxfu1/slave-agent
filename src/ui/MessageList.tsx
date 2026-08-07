@@ -18,6 +18,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 import type { MessageEntry } from './types.js';
+import { sanitizeTerminalText } from './sanitizeTerminalText.js';
 
 // Re-export types for backwards compatibility
 export type { MessageEntry, MessageEntryData } from './types.js';
@@ -106,7 +107,7 @@ function UserMessage({ content }: { content: string }): React.ReactElement {
       <Text color='white' dimColor>
         user
       </Text>
-      <Text color='white'>{content}</Text>
+      <Text color='white'>{sanitizeTerminalText(content)}</Text>
     </Box>
   );
 }
@@ -125,9 +126,9 @@ function AssistantMessage({
       </Text>
       {/* Streaming text shows raw — Markdown only renders on completed messages */}
       {isStreaming ? (
-        <Text color='white'>{content}</Text>
+        <Text color='white'>{sanitizeTerminalText(content)}</Text>
       ) : (
-        <MarkdownRenderer content={content} />
+        <MarkdownRenderer content={sanitizeTerminalText(content)} />
       )}
     </Box>
   );
@@ -175,7 +176,7 @@ function ToolCallCard({
         {/* Description shows which file / command / pattern is being processed */}
         {description !== undefined && description !== '' && (
           <Text color='gray' dimColor>
-            {description}
+            {sanitizeTerminalText(description)}
           </Text>
         )}
       </Box>
@@ -184,7 +185,7 @@ function ToolCallCard({
           color={status === 'error' ? 'red' : 'gray'}
           dimColor={status !== 'error'}
         >
-          {displayResult}
+          {sanitizeTerminalText(displayResult)}
         </Text>
       )}
     </Box>
@@ -209,7 +210,7 @@ function SystemNotice({
 
   return (
     <Box marginY={0} paddingX={1} borderStyle='single' borderColor={color}>
-      <Text color={color}>{content}</Text>
+      <Text color={color}>{sanitizeTerminalText(content)}</Text>
     </Box>
   );
 }
@@ -218,7 +219,7 @@ function Separator({ label }: { label: string }): React.ReactElement {
   return (
     <Box marginY={0} paddingX={1}>
       <Text color='gray' dimColor>
-        ── {label} ──
+        ── {sanitizeTerminalText(label)} ──
       </Text>
     </Box>
   );

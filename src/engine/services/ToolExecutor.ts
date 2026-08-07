@@ -14,7 +14,7 @@ export interface ToolExecutorDeps {
   cwd: string;
   profileDir: string;
   db: Database.Database;
-  config: MemoAgentConfig;
+  getConfig: () => MemoAgentConfig;
   recipes: Recipe[];
   // Mutable state — passed by reference so executor always reads current values
   getSessionId: () => string;
@@ -39,6 +39,7 @@ type ParseErr = { ok: false; error: string };
 export class ToolExecutor {
   private readonly toolCache = new Map<string, { result: ToolResult; cachedAt: number }>();
   private static readonly CACHE_TTL_MS = 30_000;
+  private static readonly CACHE_MAX_ENTRIES = 100;
 
   constructor(private readonly deps: ToolExecutorDeps) {}
 
@@ -66,6 +67,7 @@ export class ToolExecutor {
     toolCalls: OpenAIToolCall[],
   ): AsyncGenerator<EngineEvent, void, unknown> {
     for (const toolCall of toolCalls) {
+      if (this.deps.getAbortController()?.signal.aborted) return;
       yield* this.executeSingle(toolCall);
     }
   }
@@ -93,7 +95,7 @@ export class ToolExecutor {
 
     // Permission check
     const effectiveMode = this.isPreApproved(toolName) ? "auto" : this.deps.getPermissionMode();
-    const permResult = checkPermission(tool, input, effectiveMode, this.deps.config.permissions, this.deps.cwd);
+    const permResult = checkPermission(tool, input, effectiveMode, this.deps.getConfig().permissions, this.deps.cwd);
 
     if (permResult.behavior === "deny") {
       const msg = `Permission denied: ${permResult.reason}`;
@@ -125,7 +127,12 @@ export class ToolExecutor {
     if (tool.isReadOnly()) {
       const cacheKey = `${toolName}:${JSON.stringify(input)}`;
       const cached = this.toolCache.get(cacheKey);
-      if (cached && Date.now() - cached.cachedAt < ToolExecutor.CACHE_TTL_MS) {
+      if (cached && Date.now() - cached.cachedAt >= ToolExecutor.CACHE_TTL_MS) {
+        this.toolCache.delete(cacheKey);
+      } else if (cached) {
+        // Refresh insertion order so the Map also serves as a small LRU cache.
+        this.toolCache.delete(cacheKey);
+        this.toolCache.set(cacheKey, cached);
         const content = truncate(cached.result.content, tool.maxResultChars);
         this.appendResult(toolCall.id, toolName, content, cached.result.isError ?? false);
         yield { type: "tool_result", name: toolName, id: toolCall.id, content, isError: cached.result.isError ?? false };
@@ -143,10 +150,9 @@ export class ToolExecutor {
       return;
     }
 
-    const FILE_MUTATING_TOOLS = new Set(["WriteFile", "EditFile", "WriteNotes"]);
-    if (FILE_MUTATING_TOOLS.has(toolName)) {
-      this.deps.onInvalidateSystemPrompt();
+    if (!tool.isReadOnly() && !result.isError) {
       this.toolCache.clear();
+      this.deps.onInvalidateSystemPrompt();
     }
 
     if (!result.isError && (toolName === "WriteFile" || toolName === "EditFile")) {
@@ -160,7 +166,7 @@ export class ToolExecutor {
 
     // Cache successful read-only results
     if (tool.isReadOnly() && !result.isError) {
-      this.toolCache.set(`${toolName}:${JSON.stringify(input)}`, { result, cachedAt: Date.now() });
+      this.setCachedResult(`${toolName}:${JSON.stringify(input)}`, result);
     }
 
     this.appendResult(toolCall.id, toolName, content, result.isError ?? false);
@@ -193,7 +199,7 @@ export class ToolExecutor {
       const { input } = parsed;
 
       const effectiveMode = this.isPreApproved(toolCall.function.name) ? "auto" : this.deps.getPermissionMode();
-      const permResult = checkPermission(tool, input, effectiveMode, this.deps.config.permissions, this.deps.cwd);
+      const permResult = checkPermission(tool, input, effectiveMode, this.deps.getConfig().permissions, this.deps.cwd);
 
       if (permResult.behavior === "deny") {
         return { ok: false, toolCall, error: `Permission denied: ${permResult.reason}` };
@@ -279,7 +285,7 @@ export class ToolExecutor {
       sessionId: this.deps.getSessionId(),
       permissionMode: this.deps.getPermissionMode(),
       db: this.deps.db,
-      config: this.deps.config,
+      config: this.deps.getConfig(),
       ...(ac && { abortSignal: ac.signal }),
     };
   }
@@ -299,6 +305,16 @@ export class ToolExecutor {
       toolCallId,
       tokenCount: 0,
     });
+  }
+
+  private setCachedResult(key: string, result: ToolResult): void {
+    this.toolCache.delete(key);
+    this.toolCache.set(key, { result, cachedAt: Date.now() });
+    while (this.toolCache.size > ToolExecutor.CACHE_MAX_ENTRIES) {
+      const oldest = this.toolCache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.toolCache.delete(oldest);
+    }
   }
 
   private *checkWatchPaths(writtenPath: string): Generator<EngineEvent> {

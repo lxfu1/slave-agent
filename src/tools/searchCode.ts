@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import type { Tool, ToolContext, ToolResult } from "../types/tool.js";
 import { registerTool } from "./registry.js";
+import { resolveSafePath } from "./pathUtils.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_RESULT_CHARS = 50_000;
@@ -43,12 +44,20 @@ const searchCodeTool: Tool = {
 
   async call(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const pattern = input["pattern"] as string;
-    const searchPath = input["path"]
+    const requestedPath = input["path"]
       ? path.resolve(ctx.cwd, input["path"] as string)
       : ctx.cwd;
+    const searchPath = await resolveSafePath(requestedPath, ctx.cwd, [ctx.cwd]);
     const fileGlob = input["file_glob"] as string | undefined;
     const caseInsensitive = input["case_insensitive"] === true;
-    const maxResults = typeof input["max_results"] === "number" ? input["max_results"] : 100;
+    const maxResults = Math.max(
+      1,
+      Math.min(typeof input["max_results"] === "number" ? Math.floor(input["max_results"]) : 100, 1_000),
+    );
+
+    if (!searchPath) {
+      return { content: "Security error: search path is outside the working directory", isError: true };
+    }
 
     try {
       const output = await runRipgrep(pattern, searchPath, fileGlob, caseInsensitive, maxResults);
@@ -57,7 +66,8 @@ const searchCodeTool: Tool = {
         ? output.slice(0, MAX_RESULT_CHARS) + "\n...(truncated)"
         : output;
       return { content: truncated };
-    } catch {
+    } catch (err) {
+      if (isNoMatchError(err)) return { content: "No matches found." };
       // ripgrep not found — fall back to grep
       try {
         const output = await runGrep(pattern, searchPath, fileGlob, caseInsensitive, maxResults);
@@ -67,6 +77,7 @@ const searchCodeTool: Tool = {
           : output;
         return { content: truncated };
       } catch (grepErr) {
+        if (isNoMatchError(grepErr)) return { content: "No matches found." };
         return {
           content: `Search failed: ${grepErr instanceof Error ? grepErr.message : String(grepErr)}`,
           isError: true,
@@ -75,6 +86,10 @@ const searchCodeTool: Tool = {
     }
   },
 };
+
+function isNoMatchError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code?: number }).code === 1;
+}
 
 async function runRipgrep(
   pattern: string,

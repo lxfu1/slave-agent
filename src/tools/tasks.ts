@@ -48,6 +48,16 @@ const createTaskTool: Tool = {
     properties: {
       subject: { type: "string", description: "Brief task title" },
       description: { type: "string", description: "Detailed description of what needs to be done" },
+      blockedBy: {
+        type: "array",
+        items: { type: "string" },
+        description: "IDs of tasks that must complete before this task",
+      },
+      blocks: {
+        type: "array",
+        items: { type: "string" },
+        description: "IDs of tasks that this task blocks",
+      },
     },
     required: ["subject", "description"],
     additionalProperties: false,
@@ -63,8 +73,8 @@ const createTaskTool: Tool = {
       subject: input["subject"] as string,
       description: input["description"] as string,
       status: "pending",
-      blockedBy: "[]",
-      blocks: "[]",
+      blockedBy: JSON.stringify(Array.isArray(input["blockedBy"]) ? input["blockedBy"] : []),
+      blocks: JSON.stringify(Array.isArray(input["blocks"]) ? input["blocks"] : []),
     });
     return { content: `Created task #${id}: ${input["subject"] as string}` };
   },
@@ -83,7 +93,7 @@ const updateTaskTool: Tool = {
       id: { type: "string", description: "Task ID" },
       status: {
         type: "string",
-        enum: ["pending", "in_progress", "completed"],
+        enum: ["pending", "in_progress", "completed", "failed"],
         description: "New status (optional)",
       },
       blockedBy: {
@@ -162,7 +172,7 @@ const listTasksTool: Tool = {
     }
 
     const lines = rows.map(rowToTask).map(t => {
-      const statusIcon = t.status === "completed" ? "✓" : t.status === "in_progress" ? "→" : "○";
+      const statusIcon = t.status === "completed" ? "✓" : t.status === "failed" ? "✗" : t.status === "in_progress" ? "→" : "○";
       return `${statusIcon} #${t.id} [${t.status}] ${t.subject}`;
     });
 

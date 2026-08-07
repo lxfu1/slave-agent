@@ -40,7 +40,7 @@ const searchHistoryTool: Tool = {
       return { content: "query must not be empty", isError: true };
     }
 
-    const limit = typeof input["limit"] === "number" ? Math.min(input["limit"], 50) : 15;
+    const limit = typeof input["limit"] === "number" ? Math.max(1, Math.min(Math.floor(input["limit"]), 50)) : 15;
     const results = searchMessages(ctx.db, query, limit);
 
     if (results.length === 0) {

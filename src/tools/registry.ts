@@ -25,7 +25,7 @@ export function registerTool(tool: Tool): void {
 
 /** Returns a registered tool by name, or undefined if not found */
 export function getTool(name: string): Tool | undefined {
-  return registry.get(name);
+  return disabledSet.has(name) ? undefined : registry.get(name);
 }
 
 /**
@@ -37,6 +37,12 @@ export function disableTools(names: string[]): void {
   for (const name of names) {
     disabledSet.add(name);
   }
+}
+
+/** Replaces the disabled-tool set, used by configuration hot reload. */
+export function setDisabledTools(names: string[]): void {
+  disabledSet.clear();
+  disableTools(names);
 }
 
 /** Returns all currently enabled tools that are not disabled by config */

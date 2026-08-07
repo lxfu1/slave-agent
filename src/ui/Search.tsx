@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { MessageEntry, SearchBarProps, SearchResultsPanelProps } from "./types.js";
+import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 
 // ---------------------------------------------------------------------------
 // Entry text extractor
@@ -25,6 +26,8 @@ export function getEntryDisplayText(entry: MessageEntry): string {
 // ---------------------------------------------------------------------------
 
 export function getSnippet(text: string, query: string, maxLen = 120): string {
+  text = sanitizeTerminalText(text);
+  query = sanitizeTerminalText(query);
   if (!query.trim()) return text.slice(0, maxLen);
   const lc = text.toLowerCase();
   const idx = lc.indexOf(query.toLowerCase());
@@ -68,7 +71,7 @@ export function SearchBar({ query, results, currentIdx }: SearchBarProps): React
     <Box paddingX={1} borderStyle="single" borderColor="cyan" flexDirection="column">
       <Box flexDirection="row">
         <Text color="cyan" bold>/filter </Text>
-        <Text color="white">{query}</Text>
+        <Text color="white">{sanitizeTerminalText(query)}</Text>
         <Text color="cyan">▊</Text>
       </Box>
       <Box flexDirection="row" gap={2}>

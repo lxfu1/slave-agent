@@ -4,6 +4,7 @@ import type { ConversationEngine, PermissionDecision } from "../engine/conversat
 import type { PermissionRequest } from "../permissions/guard.js";
 import type { AppState } from "./types.js";
 import type { Key } from "ink";
+import { sanitizeTerminalText } from "./sanitizeTerminalText.js";
 
 // ---------------------------------------------------------------------------
 // PermissionDialog
@@ -23,8 +24,12 @@ export function PermissionDialog({ request }: { request: PermissionRequest }): R
       flexDirection="column"
     >
       <Text color={riskColor} bold>Permission required [{request.riskLevel} risk]</Text>
-      <Text color="white">{request.summary}</Text>
-      <Text color="gray">  [y/Enter] Allow once  [a] Allow always  [n] Deny</Text>
+      <Text color="white">{sanitizeTerminalText(request.summary)}</Text>
+      <Text color="gray">
+        {request.riskLevel === "high"
+          ? "  [y] Allow once  [n/Enter] Deny"
+          : "  [y/Enter] Allow once  [a] Allow always  [n] Deny"}
+      </Text>
     </Box>
   );
 }
@@ -44,9 +49,9 @@ export function handlePermissionInput(
   const c = char.toLowerCase();
   let decision: PermissionDecision | null = null;
 
-  if (c === "y" || key.return) decision = "allow_once";
-  else if (c === "a") decision = "allow_always";
-  else if (c === "n") decision = "deny";
+  if (c === "y" || (key.return && request.riskLevel !== "high")) decision = "allow_once";
+  else if (c === "a" && request.riskLevel !== "high") decision = "allow_always";
+  else if (c === "n" || (key.return && request.riskLevel === "high")) decision = "deny";
 
   if (decision) {
     engine.resolvePermission(request.id, decision);

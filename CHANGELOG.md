@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Hardened terminal rendering against untrusted control sequences, including OSC clipboard commands.
+- Enforced canonical filesystem boundaries for file listing, code search, reads, writes, and edits.
+- Made dangerous-command confirmation override explicit allow rules and fully enforced disabled tools.
+- Corrected streaming usage accounting, cancellation propagation, session restoration, task failure handling, and context-budget estimation.
+- Tolerated OpenAI-compatible gateways that close the transport immediately after sending an explicit streaming finish reason.
+- Made graceful shutdown cancel in-flight automatic note updates instead of waiting for the full model timeout.
+- Fixed queued-input leakage, multi-line paste submission, Unicode cursor editing, narrow-terminal status layout, and code highlighting overlap.
+- Added regression tests and made the complete test suite part of the publish gate.
+
+---
+
 ## [0.2.0] - 2026-04-29
 
 ### Added
@@ -74,4 +89,3 @@ permissions:
 
 [0.2.0]: https://github.com/lxfu1/memo-agent/releases/tag/v0.2.0
 [0.1.0]: https://github.com/lxfu1/memo-agent/releases/tag/v0.1.0
-
